@@ -1,0 +1,28 @@
+[
+  {
+    "id": "YKZTSQ4_SmhazdF_I7rkT",
+    "email": "approver@example.com",
+    "displayName": "Primary Approver",
+    "role": "approver",
+    "passwordHash": "$2b$12$gOzKaQ4qYgwYPasq4HBT3e68Skj8ed.Ev3DGndC9akGbUToPnU0Ni",
+    "createdAt": "2026-02-01T00:50:20.195Z"
+  },
+  {
+    "id": "OdUM9XitsrvUpMG2A6cUO",
+    "email": "test@test.com",
+    "displayName": "test",
+    "role": "user",
+    "passwordHash": "$2b$12$FRPkN3Hl8wA65I778dLfv.x2PqK096E/5/ESX2htc8pse35Smz9Aa",
+    "createdAt": "2026-02-01T01:01:00.836Z",
+    "lastLoginAt": "2026-02-01T05:07:43.477Z"
+  },
+  {
+    "id": "c_069HarVnl_F4jb2AM5H",
+    "email": "ben@example.com",
+    "displayName": "Approver",
+    "role": "approver",
+    "passwordHash": "$2b$12$P3pRiBEhDidJC5ZlEGFg2OlnEJB/a0jR8oWSqAVbErTWCWOyFAkj.",
+    "createdAt": "2026-02-01T01:03:40.136Z",
+    "lastLoginAt": "2026-02-01T04:45:59.117Z"
+  }
+]

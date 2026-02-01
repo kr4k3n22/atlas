@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 4, "column": 0}, "map": {"version":3,"sources":["file:///home/atlas/atlas-hitl-ui/src/app/layout.tsx"],"sourcesContent":["// src/app/layout.tsx\nimport \"./globals.css\";\n\nimport type { Metadata } from \"next\";\nimport { cookies } from \"next/headers\";\n\nexport const metadata: Metadata = {\n  title: \"ATLAS\",\n  description: \"ATLAS HITL UI\",\n};\n\nexport default async function RootLayout({\n  children,\n}: {\n  children: React.ReactNode;\n}) {\n  const cookieStore = await cookies();\n  const theme = cookieStore.get(\"theme\")?.value; // \"light\" | \"dark\" | undefined\n  const htmlClass = theme === \"light\" || theme === \"dark\" ? theme : \"\";\n\n  return (\n    <html lang=\"en\" className={htmlClass}>\n      <body>{children}</body>\n    </html>\n  );\n}"],"names":[],"mappings":"AAAA,qBAAqB;;;;;;;;AAIrB;;;;AAEO,MAAM,WAAqB;IAChC,OAAO;IACP,aAAa;AACf;AAEe,eAAe,WAAW,EACvC,QAAQ,EAGT;IACC,MAAM,cAAc,MAAM,IAAA,0IAAO;IACjC,MAAM,QAAQ,YAAY,GAAG,CAAC,UAAU,OAAO,+BAA+B;IAC9E,MAAM,YAAY,UAAU,WAAW,UAAU,SAAS,QAAQ;IAElE,qBACE,8OAAC;QAAK,MAAK;QAAK,WAAW;kBACzB,cAAA,8OAAC;sBAAM;;;;;;;;;;;AAGb"}}]
+}

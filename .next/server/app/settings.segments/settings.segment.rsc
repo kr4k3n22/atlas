@@ -1,0 +1,5 @@
+1:"$Sreact.fragment"
+2:I[6038,["/_next/static/chunks/8d751206fb699428.js","/_next/static/chunks/276f0bbdd8fab0bd.js","/_next/static/chunks/ae8f6e216296d46a.js"],"ApproverTopbar"]
+3:I[39756,["/_next/static/chunks/ff1a16fafef87110.js","/_next/static/chunks/d2be314c3ece3fbe.js"],"default"]
+4:I[37457,["/_next/static/chunks/ff1a16fafef87110.js","/_next/static/chunks/d2be314c3ece3fbe.js"],"default"]
+0:{"buildId":"18nuAliaPoEY9EtkaKCI-","rsc":["$","$1","c",{"children":[[["$","script","script-0",{"src":"/_next/static/chunks/8d751206fb699428.js","async":true}],["$","script","script-1",{"src":"/_next/static/chunks/276f0bbdd8fab0bd.js","async":true}],["$","script","script-2",{"src":"/_next/static/chunks/ae8f6e216296d46a.js","async":true}]],["$","div",null,{"className":"min-h-screen","children":[["$","$L2",null,{}],["$","main",null,{"className":"mx-auto max-w-5xl p-6","children":["$","$L3",null,{"parallelRouterKey":"children","template":["$","$L4",null,{}]}]}]]}]]}],"loading":null,"isPartial":false}

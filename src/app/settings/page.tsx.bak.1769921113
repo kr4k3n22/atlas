@@ -1,0 +1,65 @@
+// src/app/settings/page.tsx
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useTheme } from "next-themes";
+
+import { setThemePref, ThemePref } from "@/lib/theme";
+
+export default function SettingsPage() {
+  const { theme, setTheme, resolvedTheme } = useTheme();
+  const [pref, setPref] = useState<ThemePref>("system");
+
+  // Keep UI in sync with whatever theme system currently thinks is active.
+  useEffect(() => {
+    const next = ((theme ?? "system") as ThemePref);
+    setPref(next);
+  }, [theme]);
+
+  function onThemeChange(next: ThemePref) {
+    // Persist preference for future sessions.
+    setThemePref(next);
+
+    // Apply immediately via next-themes (this is what other pages normally read).
+    setTheme(next);
+
+    // Keep local UI state consistent.
+    setPref(next);
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-3xl p-6">
+      <div className="flex items-center justify-between">
+        <div className="text-lg font-semibold">Settings</div>
+        <Link className="text-sm text-muted-foreground hover:text-foreground" href="/cases">
+          Home
+        </Link>
+      </div>
+
+      <div className="mt-6 rounded-xl border border-muted/30 bg-background/40 p-5 backdrop-blur">
+        <div className="text-sm font-medium">Theme</div>
+        <div className="mt-2 text-xs text-muted-foreground">
+          Current: {resolvedTheme ?? "unknown"}
+        </div>
+
+        <div className="mt-4">
+          <label className="text-xs text-muted-foreground" htmlFor="themePref">
+            Theme preference
+          </label>
+
+          <select
+            id="themePref"
+            className="mt-2 w-full rounded-md border border-muted/40 bg-background px-3 py-2 text-sm"
+            value={pref}
+            onChange={(e) => onThemeChange(e.target.value as ThemePref)}
+          >
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 18, "column": 0}, "map": {"version":3,"sources":["file:///home/atlas/atlas-hitl-ui/src/app/page.tsx"],"sourcesContent":["// src/app/page.tsx\nimport { redirect } from \"next/navigation\";\n\nexport default function Home() {\n  redirect(\"/cases\");\n}"],"names":[],"mappings":";;;;AAAA,mBAAmB;AACnB;AAAA;;AAEe,SAAS;IACtB,IAAA,iMAAQ,EAAC;AACX"}}]
+}

@@ -1,0 +1,1 @@
+{"version":3,"sources":["../../../../src/app/page.tsx"],"sourcesContent":["// src/app/page.tsx\nimport { redirect } from \"next/navigation\";\n\nexport default function Home() {\n  redirect(\"/cases\");\n}"],"names":[],"mappings":"qUACA,EAAA,CAAA,CAAA,OAAA,IAAA,EAAA,EAAA,CAAA,CAAA,OAEe,SAAS,IACtB,CAAA,EAAA,EAAA,QAAA,AAAQ,EAAC,SACX"}

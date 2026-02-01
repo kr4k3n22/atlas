@@ -1,0 +1,753 @@
+"use client";
+import { useEffect, useState } from "react";
+import ThemeInit from "@/app/_components/ThemeInit";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  UserSettings,
+  defaultSettings,
+  loadSettings,
+  onSettingsChange,
+} from "@/lib/userSettings";
+
+type RiskLabel = "ROUTINE" | "ESCALATE" | "BLOCK";
+type CaseStatus =
+  | "PENDING_REVIEW"
+  | "APPROVED"
+  | "REJECTED"
+  | "NEEDS_INFO"
+  | "CLOSED";
+
+type CaseRecord = {
+  id: string;
+  user_name: string;
+  user_message: string;
+  tool_name: string;
+  tool_args_redacted: Record<string, unknown>;
+  risk_label: RiskLabel;
+  risk_score: number;
+  risk_rationale: string;
+  policy_refs: string[];
+  status: CaseStatus;
+  created_at: string;
+  audit_trail: Array<{
+    ts: string;
+    actor: string;
+    action: string;
+    detail?: string;
+  }>;
+};
+
+function cx(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(" ");
+}
+
+function badgeClass(label: string) {
+  if (label === "BLOCK") return "bg-red-600/90 text-white border-red-500/60";
+  if (label === "ESCALATE") return "bg-orange-500/90 text-white border-orange-400/60";
+  if (label === "APPROVED") return "bg-green-600/90 text-white border-green-500/60";
+  if (label === "REJECTED") return "bg-red-700/90 text-white border-red-600/60";
+  if (label === "PENDING_REVIEW") return "bg-slate-700/70 text-slate-100 border-slate-600/60";
+  if (label === "NEEDS_INFO") return "bg-yellow-500/90 text-black border-yellow-400/60";
+  return "bg-slate-600/60 text-slate-100 border-slate-500/60";
+}
+
+async function fetchCases(): Promise<CaseRecord[]> {
+  const res = await fetch("/api/cases", { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to load cases");
+  return res.json();
+}
+
+async function decideCase(id: string, decision: "APPROVE" | "REJECT" | "REQUEST_INFO", note: string) {
+  const res = await fetch(`/api/cases/${encodeURIComponent(id)}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ decision, note }),
+  });
+  if (!res.ok) throw new Error("Failed to submit decision");
+  return res.json();
+}
+
+
+function ApproverUserMenu() {
+  const [email, setEmail] = useState("approver");
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((j) => setEmail(j?.session?.email ?? "approver"))
+      .catch(() => setEmail("approver"));
+  }, []);
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/approver/login";
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="inline-flex h-9 max-w-[320px] items-center justify-center truncate rounded-md border border-muted/60 bg-background/40 px-3 text-sm text-foreground shadow-sm backdrop-blur hover:bg-background/60">
+          {email}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel className="truncate">{email}</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <a href="/settings">Settings</a>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            logout();
+          }}
+        >
+          Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+export default function CasesPage() {
+  
+  const [atlasSession, setAtlasSession] = useState<any>(null);
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then(setAtlasSession)
+      .catch(() => setAtlasSession(null));
+  }, []);
+  const email = atlasSession?.session?.email ?? "approver";
+const [settings, setSettings] = useState<UserSettings>(defaultSettings);
+
+  const [all, setAll] = useState<CaseRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  const [tab, setTab] = useState<"PENDING" | "APPROVED" | "REJECTED" | "ALL">("PENDING");
+  const [q, setQ] = useState("");
+  const [risk, setRisk] = useState<"ALL" | RiskLabel>("ALL");
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const tableWrapRef = useRef<HTMLDivElement | null>(null);
+
+  async function refresh() {
+    setLoading(true);
+    setErr(null);
+    try {
+      const data = await fetchCases();
+      setAll(data);
+    } catch (e: any) {
+      setErr(e?.message ?? "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Load settings + react to changes
+  useEffect(() => {
+    const apply = () => {
+      const s = loadSettings();
+      setSettings(s);
+
+      // apply defaults when user has not interacted yet
+      setTab(s.defaultInboxTab);
+      setRisk(s.defaultRiskFilter === "ALL" ? "ALL" : (s.defaultRiskFilter as RiskLabel));
+    };
+
+    apply();
+    const off = onSettingsChange(apply);
+  async function approverLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/approver/login";
+  }
+
+    return (
+) => off();
+  }, []);
+
+  // Auto-refresh based on settings
+  useEffect(() => {
+    const v = settings.autoRefresh;
+    if (!v || v === "off") return;
+
+    const ms = v === "30s" ? 30000 : 60000;
+    const id = window.setInterval(() => {
+      refresh();
+    }, ms);
+
+    return () => window.clearInterval(id);
+  }, [settings.autoRefresh]);
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const counts = useMemo(() => {
+    const pending = all.filter((c) => c.status === "PENDING_REVIEW").length;
+    const approved = all.filter((c) => c.status === "APPROVED").length;
+    const rejected = all.filter((c) => c.status === "REJECTED").length;
+    return { pending, approved, rejected, all: all.length };
+  }, [all]);
+
+  const filtered = useMemo(() => {
+    const t = tab;
+    const needle = q.trim().toLowerCase();
+
+    return all
+      .filter((c) => {
+        if (t === "PENDING" && c.status !== "PENDING_REVIEW") return false;
+        if (t === "APPROVED" && c.status !== "APPROVED") return false;
+        if (t === "REJECTED" && c.status !== "REJECTED") return false;
+        if (risk !== "ALL" && c.risk_label !== risk) return false;
+
+        if (!needle) return true;
+        const hay = [
+          c.id,
+          c.user_name,
+          c.tool_name,
+          c.user_message,
+          c.status,
+          c.risk_label,
+        ]
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(needle);
+      })
+      .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  }, [all, tab, q, risk]);
+
+  const selectedIndex = useMemo(() => {
+    if (!selectedId) return -1;
+    return filtered.findIndex((c) => c.id === selectedId);
+  }, [filtered, selectedId]);
+
+  const selected = useMemo(() => {
+    if (!selectedId) return null;
+    return all.find((c) => c.id === selectedId) ?? null;
+  }, [all, selectedId]);
+
+  function selectByIndex(i: number) {
+    if (filtered.length === 0) return;
+    const clamped = Math.max(0, Math.min(filtered.length - 1, i));
+    const id = filtered[clamped].id;
+
+    setSelectedId(id);
+
+    // Only auto-open preview during keyboard selection if user wants it
+    if (settings.previewBehavior === "auto_on_select") setPreviewOpen(true);
+
+    requestAnimationFrame(() => tableWrapRef.current?.focus());
+  }
+
+  async function runDecision(decision: "APPROVE" | "REJECT" | "REQUEST_INFO") {
+    if (!selected) return;
+
+    if (needsNote(settings, selected) && !note.trim()) {
+      setErr("Note required for this decision (settings). Add a note and retry.");
+      return;
+    }
+
+    setBusy(true);
+    setErr(null);
+    try {
+      await decideCase(selected.id, decision, note.trim());
+      setNote("");
+      await refresh();
+    } catch (e: any) {
+      setErr(e?.message ?? "Decision failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    if (!settings.keyboardShortcuts) return;
+
+    function onKeyDown(e: KeyboardEvent) {
+      const tag = (e.target as any)?.tagName?.toLowerCase?.();
+      const typing =
+        tag === "input" || tag === "textarea" || (e.target as any)?.isContentEditable;
+      if (typing) return;
+
+      if (e.key === "j" || e.key === "J") {
+        e.preventDefault();
+        if (selectedIndex === -1) selectByIndex(0);
+        else selectByIndex(selectedIndex + 1);
+      }
+      if (e.key === "k" || e.key === "K") {
+        e.preventDefault();
+        if (selectedIndex === -1) selectByIndex(0);
+        else selectByIndex(selectedIndex - 1);
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setPreviewOpen(false);
+      }
+      if (e.key === "a" || e.key === "A") {
+        e.preventDefault();
+        runDecision("APPROVE");
+      }
+      if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
+        runDecision("REJECT");
+      }
+      if (e.key === "i" || e.key === "I") {
+        e.preventDefault();
+        runDecision("REQUEST_INFO");
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [settings.keyboardShortcuts, settings.previewBehavior, selectedIndex, selected, note, filtered]);
+
+  const showRail = previewOpen && settings.previewPosition === "right_rail";
+  const showDrawer = previewOpen && settings.previewPosition === "modal_drawer";
+
+  return (
+    <div className="min-h-screen">
+      <ThemeInit />
+      <div className="mx-auto w-full max-w-[1600px] px-6 py-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">HITL Review Inbox</h1>
+            <p className="text-sm text-muted-foreground">
+              Triage escalations. Approve or block actions. Everything lands in audit.
+            </p>
+            {err ? <p className="mt-2 text-sm text-red-500">Error: {err}</p> : null}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <a
+              href="/cases"
+              className="rounded-md border border-border bg-background/60 px-3 py-2 text-sm hover:bg-background"
+            >
+              Home
+            </a>
+            <button
+              onClick={refresh}
+              className="rounded-md border border-border bg-background/60 px-3 py-2 text-sm hover:bg-background"
+            >
+              Refresh
+            </button>
+            <a
+              href="/settings"
+              className="rounded-md border border-border bg-background/60 px-3 py-2 text-sm hover:bg-background"
+            >
+              Settings
+            </a>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-xl border border-border bg-background/40 p-4 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-lg border border-border bg-background/50 p-1">
+              <button
+                onClick={() => setTab("PENDING")}
+                className={cx("rounded-md px-3 py-1.5 text-sm", tab === "PENDING" && "bg-foreground/10")}
+              >
+                Pending ({counts.pending})
+              </button>
+              <button
+                onClick={() => setTab("APPROVED")}
+                className={cx("rounded-md px-3 py-1.5 text-sm", tab === "APPROVED" && "bg-foreground/10")}
+              >
+                Approved ({counts.approved})
+              </button>
+              <button
+                onClick={() => setTab("REJECTED")}
+                className={cx("rounded-md px-3 py-1.5 text-sm", tab === "REJECTED" && "bg-foreground/10")}
+              >
+                Rejected ({counts.rejected})
+              </button>
+              <button
+                onClick={() => setTab("ALL")}
+                className={cx("rounded-md px-3 py-1.5 text-sm", tab === "ALL" && "bg-foreground/10")}
+              >
+                All ({counts.all})
+              </button>
+            </div>
+
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search case id, user, tool..."
+              className="h-10 w-[320px] rounded-md border border-border bg-background/60 px-3 text-sm outline-none focus:ring-2 focus:ring-foreground/20"
+            />
+
+            <select
+              value={risk}
+              onChange={(e) => setRisk(e.target.value as any)}
+              className="h-10 rounded-md border border-border bg-background/60 px-3 text-sm outline-none focus:ring-2 focus:ring-foreground/20"
+            >
+              <option value="ALL">All risk</option>
+              <option value="ROUTINE">Routine</option>
+              <option value="ESCALATE">Escalate</option>
+              <option value="BLOCK">Block</option>
+            </select>
+
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                onClick={() => setPreviewOpen((v) => !v)}
+                className="h-10 rounded-md border border-border bg-background/60 px-3 text-sm hover:bg-background"
+              >
+                {previewOpen ? "Hide preview" : "Show preview"}
+              </button>
+            </div>
+          </div>
+
+          <div
+            className={cx(
+              "mt-4 grid gap-4",
+              "grid-cols-1 xl:grid-cols-[minmax(620px,1fr)_minmax(380px,460px)]"
+            )}
+          >
+            <div className="min-w-0">
+              <div className="rounded-xl border border-border bg-background/50">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div>
+                    <div className="text-sm font-medium">Queue</div>
+                    <div className="text-xs text-muted-foreground">
+                      Click a row to preview.
+                      {settings.keyboardShortcuts
+                        ? " Shortcuts: J/K move, A approve, R reject, I request info, Esc close."
+                        : " Shortcuts: disabled in Settings."}
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-muted-foreground">
+                    {loading ? "Loading..." : `${filtered.length} shown`}
+                  </div>
+                </div>
+
+                <div
+                  ref={tableWrapRef}
+                  tabIndex={-1}
+                  className="max-h-[calc(100vh-260px)] overflow-auto outline-none"
+                >
+                  <table className="w-full border-separate border-spacing-0">
+                    <thead className="sticky top-0 z-10 bg-background/90 backdrop-blur">
+                      <tr className="text-left text-xs text-muted-foreground">
+                        <th className="px-4 py-3">Case ID</th>
+                        <th className="px-4 py-3">User</th>
+                        <th className="px-4 py-3">Tool</th>
+                        <th className="px-4 py-3">Verdict</th>
+                        <th className="px-4 py-3">Score</th>
+                        <th className="px-4 py-3">Status</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {filtered.map((c) => {
+                        const active = c.id === selectedId && previewOpen;
+                        return (
+                          <tr
+                            key={c.id}
+                            onClick={() => {
+                              setSelectedId(c.id);
+                              setPreviewOpen(true);
+                            }}
+                            className={cx(
+                              "cursor-pointer border-t border-border/60",
+                              "hover:bg-foreground/5",
+                              active && "bg-foreground/10 ring-1 ring-foreground/20"
+                            )}
+                          >
+                            <td className="px-4 py-3 text-sm font-medium">
+                              <span className="underline decoration-foreground/30 underline-offset-4">
+                                {c.id}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm">{c.user_name}</td>
+                            <td className="px-4 py-3 text-sm">
+                              <span className="block max-w-[420px] truncate">{c.tool_name}</span>
+                            </td>
+                            <td className="px-4 py-3 text-sm">
+                              <span
+                                className={cx(
+                                  "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold",
+                                  badgeClass(c.risk_label)
+                                )}
+                              >
+                                {c.risk_label}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm tabular-nums">{c.risk_score}</td>
+                            <td className="px-4 py-3 text-sm">
+                              <span
+                                className={cx(
+                                  "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold",
+                                  badgeClass(c.status)
+                                )}
+                              >
+                                {c.status}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+
+                      {!loading && filtered.length === 0 ? (
+                        <tr>
+                          <td className="px-4 py-10 text-sm text-muted-foreground" colSpan={6}>
+                            No cases match your filters.
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* Right rail preview */}
+            <div className={cx("min-w-0", !showRail && "hidden xl:block")}>
+              <div
+                className={cx(
+                  "rounded-xl border border-border bg-background/50",
+                  "xl:sticky xl:top-6",
+                  "max-h-[calc(100vh-72px)] overflow-hidden"
+                )}
+              >
+                <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
+                  <div className="text-sm font-medium">Preview</div>
+                  <button
+                    onClick={() => setPreviewOpen(false)}
+                    className="rounded-md border border-border bg-background/60 px-2 py-1 text-xs hover:bg-background"
+                    title="Close preview"
+                  >
+                    X
+                  </button>
+                </div>
+
+                <div className="max-h-[calc(100vh-140px)] overflow-auto p-4">
+                  {!selected ? (
+                    <div className="text-sm text-muted-foreground">Select a case to preview it here.</div>
+                  ) : (
+                    <PreviewCard
+                      c={selected}
+                      note={note}
+                      setNote={setNote}
+                      busy={busy}
+                      settings={settings}
+                      onApprove={() => runDecision("APPROVE")}
+                      onReject={() => runDecision("REJECT")}
+                      onInfo={() => runDecision("REQUEST_INFO")}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {!previewOpen ? (
+                <div className="mt-3 rounded-xl border border-border bg-background/40 p-4 xl:block">
+                  <div className="text-sm font-semibold">Preview is hidden</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Click a row to open it. Keyboard selection opens it only if enabled in Settings.
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal drawer preview */}
+      {showDrawer ? (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setPreviewOpen(false)} />
+          <div className="absolute right-0 top-0 h-full w-full max-w-[520px] bg-background border-l border-border">
+            <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
+              <div className="text-sm font-semibold">Preview</div>
+              <button
+                onClick={() => setPreviewOpen(false)}
+                className="rounded-md border border-border bg-background/60 px-2 py-1 text-xs hover:bg-background"
+              >
+                X
+              </button>
+            </div>
+            <div className="h-[calc(100vh-52px)] overflow-auto p-4">
+              {!selected ? (
+                <div className="text-sm text-muted-foreground">Select a case to preview it here.</div>
+              ) : (
+                <PreviewCard
+                  c={selected}
+                  note={note}
+                  setNote={setNote}
+                  busy={busy}
+                  settings={settings}
+                  onApprove={() => runDecision("APPROVE")}
+                  onReject={() => runDecision("REJECT")}
+                  onInfo={() => runDecision("REQUEST_INFO")}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PreviewCard(props: {
+  c: CaseRecord;
+  note: string;
+  setNote: (v: string) => void;
+  busy: boolean;
+  settings: UserSettings;
+  onApprove: () => void;
+  onReject: () => void;
+  onInfo: () => void;
+}) {
+  const { c, note, setNote, busy, settings, onApprove, onReject, onInfo } = props;
+
+  const noteRequired = needsNote(settings, c);
+
+  return (
+      <>
+
+    
+            <div data-atlas-approver-header className="sticky top-0 z-50 border-b border-muted/30 bg-background/40 backdrop-blur">
+        <div className="mx-auto max-w-6xl px-6 py-3 flex items-center justify-between">
+          <div className="font-semibold tracking-tight">
+            <a href="/cases">ATLAS</a>
+          </div>
+
+          <ApproverUserMenu />
+        </div>
+      </div>
+<div className="space-y-4">
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <div className="text-lg font-semibold">{c.id}</div>
+            <div className="text-xs text-muted-foreground">Created: {c.created_at}</div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={cx("inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold", badgeClass(c.risk_label))}>
+              {c.risk_label}
+            </span>
+            <span className={cx("inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold", badgeClass(c.status))}>
+              {c.status}
+            </span>
+            <span className="inline-flex items-center rounded-full border border-border bg-background/60 px-2 py-1 text-xs font-semibold">
+              Score: <span className="ml-1 tabular-nums">{c.risk_score}</span>
+            </span>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border/60 bg-background/40 p-3">
+          <div className="grid gap-2 text-sm">
+            <div className="break-words">
+              <span className="text-muted-foreground">User:</span>{" "}
+              <span className="font-medium">{c.user_name}</span>
+            </div>
+            <div className="break-words">
+              <span className="text-muted-foreground">Tool:</span>{" "}
+              <span className="font-mono text-xs">{c.tool_name}</span>
+            </div>
+            <div className="break-words">
+              <span className="text-muted-foreground">Message:</span>{" "}
+              <span className="font-medium">{c.user_message}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-border/60 bg-gradient-to-b from-foreground/5 to-transparent p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold">Risk Assessment</div>
+          <div className="rounded-full border border-border bg-background/60 px-2 py-1 text-xs font-semibold">
+            Score: <span className="tabular-nums">{c.risk_score}</span>
+          </div>
+        </div>
+
+        <div className="mt-3 text-sm">
+          <div className="text-xs font-semibold text-muted-foreground">Reason</div>
+          <div className="mt-1 whitespace-pre-wrap break-words">{c.risk_rationale}</div>
+        </div>
+
+        <div className="mt-3 text-sm">
+          <div className="text-xs font-semibold text-muted-foreground">Policy refs</div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {(c.policy_refs ?? []).map((p) => (
+              <span
+                key={p}
+                className="inline-flex items-center rounded-full border border-border bg-background/60 px-2 py-1 text-xs font-semibold"
+              >
+                {p}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div className="text-sm font-semibold">Decision note</div>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Add a short note to the audit trail (optional)."
+          className="mt-2 w-full rounded-md border border-border bg-background/60 p-3 text-sm outline-none focus:ring-2 focus:ring-foreground/20"
+          rows={3}
+        />
+        {noteRequired ? (
+          <div className="mt-2 text-xs text-muted-foreground">
+            Note required by settings for this case (risk label/score).
+          </div>
+        ) : null}
+
+        <div className="mt-3 grid grid-cols-1 gap-2">
+          <button
+            disabled={busy}
+            onClick={onApprove}
+            className="h-11 rounded-md bg-green-600 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+          >
+            Approve (A)
+          </button>
+          <button
+            disabled={busy}
+            onClick={onReject}
+            className="h-11 rounded-md bg-red-700 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-60"
+          >
+            Reject (R)
+          </button>
+          <button
+            disabled={busy}
+            onClick={onInfo}
+            className="h-11 rounded-md border border-border bg-background/60 text-sm font-semibold hover:bg-background disabled:opacity-60"
+          >
+            Request info (I)
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-border/60 bg-background/40 p-3">
+        <div className="text-sm font-semibold">Tool args (redacted)</div>
+        <pre className="mt-2 overflow-auto rounded-md bg-black/30 p-3 text-xs leading-relaxed">
+{JSON.stringify(c.tool_args_redacted ?? {}, null, 2)}
+        </pre>
+      </div>
+    </div>
+      </>
+  );
+}
+
+function needsNote(s: UserSettings, c: CaseRecord) {
+  const high = c.risk_score >= (s.highRiskThreshold ?? 80);
+  const block = c.risk_label === "BLOCK";
+
+  if (s.decisionRequiresNote === "off") return false;
+  if (s.decisionRequiresNote === "block_only") return block;
+  if (s.decisionRequiresNote === "high_only") return high;
+  return block || high;
+}

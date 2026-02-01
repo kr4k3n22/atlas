@@ -1,0 +1,48 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+export default function SettingsPage() {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  async function logout() {
+    try {
+      setBusy(true);
+      await fetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      setBusy(false);
+      router.push("/approver/login");
+      router.refresh();
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
+        <div className="text-sm font-semibold tracking-wide">ATLAS</div>
+        <nav className="flex items-center gap-4 text-sm">
+          <Link className="text-muted-foreground hover:text-foreground" href="/cases">
+            Home
+          </Link>
+          <button
+            className="rounded-md border px-3 py-1 text-sm hover:bg-muted disabled:opacity-60"
+            onClick={logout}
+            disabled={busy}
+          >
+            {busy ? "Signing out..." : "Sign out"}
+          </button>
+        </nav>
+      </header>
+
+      <main className="mx-auto max-w-5xl px-6 py-10">
+        <h1 className="text-xl font-semibold">Settings</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Dark mode is enforced site-wide.
+        </p>
+      </main>
+    </div>
+  );
+}
