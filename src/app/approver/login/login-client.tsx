@@ -73,6 +73,11 @@ export default function ApproverLoginClient() {
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
                 />
+                <div className="text-xs">
+                  <Link className="underline text-muted-foreground" href="/reset-password">
+                    Forgot password?
+                  </Link>
+                </div>
               </div>
 
               {err ? <p className="text-sm text-red-400">{err}</p> : null}
@@ -87,9 +92,14 @@ export default function ApproverLoginClient() {
                 <Link className="underline text-muted-foreground" href="/">
                   Home
                 </Link>
-                <Link className="underline text-muted-foreground" href="/login">
-                  User login
-                </Link>
+                <div className="flex gap-3">
+                  <Link className="underline text-muted-foreground" href="/login">
+                    User login
+                  </Link>
+                  <Link className="underline text-muted-foreground" href="/approver/register">
+                    Approver signup
+                  </Link>
+                </div>
               </div>
             </form>
           </CardContent>
