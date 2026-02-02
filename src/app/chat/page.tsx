@@ -1,21 +1,31 @@
 "use client";
 
-import Link from "next/link";
 import React from "react";
-import { UserMenu } from "@/components/app/user-menu";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabaseClient";
+import UserMenu from "@/components/UserMenu";
 
-export default function ChatStub() {
+export default function ChatPage() {
+  const supabase = React.useMemo(() => createClient(), []);
   const [session, setSession] = React.useState<any>(null);
 
   React.useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then(setSession)
-      .catch(() => setSession(null));
-  }, []);
+    supabase.auth.getSession().then(({ data }) => {
+      const user = data.session?.user;
+      if (!user) return setSession(null);
+
+      setSession({
+        id: user.id,
+        email: user.email,
+        displayName: user.user_metadata?.displayName ?? user.email,
+        role: user.user_metadata?.role ?? "user",
+      });
+    });
+  }, [supabase]);
 
   async function signOut() {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await supabase.auth.signOut();
     window.location.href = "/login";
   }
 
@@ -35,10 +45,6 @@ export default function ChatStub() {
         <p className="text-sm text-muted-foreground">
           Next step: wire ChatGPT API here. Send requests to ATLAS. Route high-impact actions to HITL inbox.
         </p>
-
-        <pre className="text-xs bg-muted/30 border rounded-md p-3 overflow-auto">
-{JSON.stringify(session, null, 2)}
-        </pre>
       </main>
     </div>
   );
