@@ -8,11 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { createClient } from "@/lib/supabaseClient";
 
 export default function UserLoginClient() {
   const router = useRouter();
   const sp = useSearchParams();
   const next = sp.get("next") || "/chat";
+  const supabase = React.useMemo(() => createClient(), []);
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -24,12 +26,15 @@ export default function UserLoginClient() {
     setErr(null);
     setBusy(true);
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password, role: "user" }),
-      });
-      if (!res.ok) throw new Error(await res.text());
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+
+      const role = data.user?.user_metadata?.role ?? "user";
+      if (role !== "user") {
+        await supabase.auth.signOut();
+        throw new Error("This account is not a user account.");
+      }
+
       router.push(next);
     } catch (e: any) {
       setErr(e?.message || "Login failed");
@@ -95,7 +100,7 @@ export default function UserLoginClient() {
         </Card>
 
         <p className="text-xs text-muted-foreground">
-          Passwords are hashed with bcrypt. Session uses a signed, httpOnly cookie.
+          Passwords are stored in Supabase. Session uses Supabase auth.
         </p>
       </div>
     </div>
