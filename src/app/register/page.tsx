@@ -8,9 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { createClient } from "@/lib/supabaseClient";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const supabase = React.useMemo(() => createClient(), []);
 
   const [displayName, setDisplayName] = React.useState("");
   const [email, setEmail] = React.useState("");
@@ -23,12 +25,20 @@ export default function RegisterPage() {
     setErr(null);
     setBusy(true);
     try {
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ displayName, email, password }),
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { role: "user", displayName },
+        },
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (error) throw error;
+
+      if (!data.session) {
+        setErr("Check your email to confirm your account.");
+        return;
+      }
+
       router.push("/chat");
     } catch (e: any) {
       setErr(e?.message || "Registration failed");
@@ -39,18 +49,12 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
-      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-background via-background to-muted/30" />
-
+      <div className="absolute inset-0 -z-10 bg-black" />
       <div className="w-full max-w-md space-y-4">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-semibold tracking-tight">Create account</h1>
-          <p className="text-sm text-muted-foreground">User accounts only. Approvers are seeded.</p>
-        </div>
-
-        <Card className="border-muted/60 bg-background/70 backdrop-blur">
+        <Card className="border-muted/60 bg-background/60 backdrop-blur">
           <CardHeader>
-            <CardTitle>Register</CardTitle>
-            <CardDescription>We store a bcrypt hash only. Never plaintext.</CardDescription>
+            <CardTitle>Create account</CardTitle>
+            <CardDescription>Use your email and password.</CardDescription>
           </CardHeader>
           <CardContent>
             <form className="space-y-4" onSubmit={submit}>
@@ -70,9 +74,6 @@ export default function RegisterPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="new-password"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Use 12+ chars. In production, enforce complexity and use breach checks.
-                </p>
               </div>
 
               {err ? <p className="text-sm text-red-400">{err}</p> : null}
@@ -94,10 +95,6 @@ export default function RegisterPage() {
             </form>
           </CardContent>
         </Card>
-
-        <p className="text-xs text-muted-foreground">
-          Local dev store: .data/users.json (gitignored).
-        </p>
       </div>
     </div>
   );
