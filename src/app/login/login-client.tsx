@@ -73,7 +73,11 @@ export default function UserLoginClient() {
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"
                 />
-                <p className="text-xs text-muted-foreground">Minimum 12 characters recommended.</p>
+                <div className="text-xs">
+                  <Link className="underline text-muted-foreground" href="/reset-password">
+                    Forgot password?
+                  </Link>
+                </div>
               </div>
 
               {err ? <p className="text-sm text-red-400">{err}</p> : null}
