@@ -8,11 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { createClient } from "@/lib/supabaseClient";
 
 export default function ApproverLoginClient() {
   const router = useRouter();
   const sp = useSearchParams();
   const next = sp.get("next") || "/cases";
+  const supabase = React.useMemo(() => createClient(), []);
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -24,12 +26,15 @@ export default function ApproverLoginClient() {
     setErr(null);
     setBusy(true);
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password, role: "approver" }),
-      });
-      if (!res.ok) throw new Error(await res.text());
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+
+      const role = data.user?.user_metadata?.role ?? "user";
+      if (role !== "approver") {
+        await supabase.auth.signOut();
+        throw new Error("This account is not an approver.");
+      }
+
       router.push(next);
     } catch (e: any) {
       setErr(e?.message || "Login failed");
@@ -52,7 +57,7 @@ export default function ApproverLoginClient() {
         <Card className="border-muted/60 bg-background/60 backdrop-blur">
           <CardHeader>
             <CardTitle>Sign in</CardTitle>
-            <CardDescription>Approver accounts are seeded for now.</CardDescription>
+            <CardDescription>Approver accounts are seeded in Supabase.</CardDescription>
           </CardHeader>
           <CardContent>
             <form className="space-y-4" onSubmit={submit}>
@@ -90,7 +95,7 @@ export default function ApproverLoginClient() {
           </CardContent>
         </Card>
 
-        <p className="text-xs text-muted-foreground">This role gates /cases and /settings. Keep it tight.</p>
+        <p className="text-xs text-muted-foreground">This role gates /cases and /settings.</p>
       </div>
     </div>
   );
