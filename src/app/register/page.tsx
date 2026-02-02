@@ -53,7 +53,7 @@ export default function RegisterPage() {
       <div className="w-full max-w-md space-y-4">
         <Card className="border-muted/60 bg-background/60 backdrop-blur">
           <CardHeader>
-            <CardTitle>Create account</CardTitle>
+            <CardTitle>Create user account</CardTitle>
             <CardDescription>Use your email and password.</CardDescription>
           </CardHeader>
           <CardContent>
