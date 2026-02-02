@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabaseClient";
-import UserMenu from "@/components/UserMenu";
+import UserMenu from "@/components/app/user-menu";
 
 export default function ChatPage() {
   const supabase = React.useMemo(() => createClient(), []);
