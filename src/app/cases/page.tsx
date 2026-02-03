@@ -341,132 +341,141 @@ export default function CasesPage() {
 
         <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="rounded-xl border border-muted/60 bg-background/40 backdrop-blur">
-            <table className="w-full text-sm">
-              <thead className="border-b border-muted/60 text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium">Status</th>
-                  <th className="px-4 py-3 text-left font-medium">Risk</th>
-                  <th className="px-4 py-3 text-left font-medium">Created</th>
-                  <th className="px-4 py-3 text-left font-medium">User</th>
-                  <th className="px-4 py-3 text-left font-medium">Tool</th>
-                  <th className="px-4 py-3 text-left font-medium">Message</th>
-                  <th className="px-4 py-3 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-[900px] w-full text-sm">
+                <thead className="border-b border-muted/60 text-muted-foreground">
                   <tr>
-                    <td className="px-4 py-6 text-muted-foreground" colSpan={7}>
-                      Loading...
-                    </td>
+                    <th className="px-4 py-3 text-left font-medium">Status</th>
+                    <th className="px-4 py-3 text-left font-medium">Risk</th>
+                    <th className="px-4 py-3 text-left font-medium">Created</th>
+                    <th className="px-4 py-3 text-left font-medium">User</th>
+                    <th className="px-4 py-3 text-left font-medium">Tool</th>
+                    <th className="px-4 py-3 text-left font-medium hidden xl:table-cell">Message</th>
+                    <th className="px-4 py-3 text-right font-medium w-[160px]">Actions</th>
                   </tr>
-                ) : filtered.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-6 text-muted-foreground" colSpan={7}>
-                      No cases match your filters.
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map((c) => {
-                    const active = c.id === selectedId;
-                    return (
-                      <tr
-                        key={c.id}
-                        onClick={() => setSelectedId(c.id)}
-                        className={cx(
-                          "cursor-pointer border-t border-muted/40 hover:bg-foreground/5 group",
-                          active && "bg-foreground/10"
-                        )}
-                      >
-                        <td className="px-4 py-3">
-                          <span
-                            className={cx(
-                              "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
-                              badgeClass(c.status)
-                            )}
-                          >
-                            {c.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={cx(
-                              "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
-                              badgeClass(c.risk_label)
-                            )}
-                          >
-                            {c.risk_label} ({Math.round(c.risk_score)})
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {new Date(c.created_at).toLocaleString()}
-                        </td>
-                        <td className="px-4 py-3">{c.user_name}</td>
-                        <td className="px-4 py-3">{c.tool_name}</td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {c.user_message.length > 90
-                            ? c.user_message.slice(0, 90) + "..."
-                            : c.user_message}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition">
-                            <button
-                              className="h-7 rounded-md border border-muted/60 px-2 text-xs hover:bg-background/60"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedId(c.id);
-                              }}
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td className="px-4 py-6 text-muted-foreground" colSpan={7}>
+                        Loading...
+                      </td>
+                    </tr>
+                  ) : filtered.length === 0 ? (
+                    <tr>
+                      <td className="px-4 py-6 text-muted-foreground" colSpan={7}>
+                        No cases match your filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    filtered.map((c) => {
+                      const active = c.id === selectedId;
+                      return (
+                        <tr
+                          key={c.id}
+                          onClick={() => setSelectedId(c.id)}
+                          className={cx(
+                            "cursor-pointer border-t border-muted/40 hover:bg-foreground/5 group",
+                            active && "bg-foreground/10"
+                          )}
+                        >
+                          <td className="px-4 py-3">
+                            <span
+                              className={cx(
+                                "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
+                                badgeClass(c.status)
+                              )}
                             >
-                              Open
-                            </button>
-                            <button
-                              className="h-7 rounded-md border border-green-500/60 bg-green-500/15 px-2 text-xs hover:bg-green-500/25"
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                setSelectedId(c.id);
-                                setBusy(true);
-                                setErr(null);
-                                try {
-                                  await decideCase(c.id, "APPROVE", "");
-                                  await refresh();
-                                } catch (err: any) {
-                                  setErr(err?.message ?? "Failed to submit decision");
-                                } finally {
-                                  setBusy(false);
-                                }
-                              }}
-                              disabled={busy}
+                              {c.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={cx(
+                                "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
+                                badgeClass(c.risk_label)
+                              )}
                             >
-                              Approve
-                            </button>
-                            <button
-                              className="h-7 rounded-md border border-red-500/60 bg-red-500/15 px-2 text-xs hover:bg-red-500/25"
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                setSelectedId(c.id);
-                                setBusy(true);
-                                setErr(null);
-                                try {
-                                  await decideCase(c.id, "REJECT", "");
-                                  await refresh();
-                                } catch (err: any) {
-                                  setErr(err?.message ?? "Failed to submit decision");
-                                } finally {
-                                  setBusy(false);
-                                }
-                              }}
-                              disabled={busy}
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                              {c.risk_label} ({Math.round(c.risk_score)})
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {new Date(c.created_at).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3">{c.user_name}</td>
+                          <td className="px-4 py-3">
+                            <div>{c.tool_name}</div>
+                            <div className="mt-1 text-xs text-muted-foreground xl:hidden">
+                              {c.user_message.length > 80
+                                ? c.user_message.slice(0, 80) + "..."
+                                : c.user_message}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground hidden xl:table-cell">
+                            {c.user_message.length > 90
+                              ? c.user_message.slice(0, 90) + "..."
+                              : c.user_message}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition">
+                              <button
+                                className="h-7 rounded-md border border-muted/60 px-2 text-xs hover:bg-background/60"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedId(c.id);
+                                }}
+                              >
+                                Open
+                              </button>
+                              <button
+                                className="h-7 rounded-md border border-green-500/60 bg-green-500/15 px-2 text-xs hover:bg-green-500/25"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  setSelectedId(c.id);
+                                  setBusy(true);
+                                  setErr(null);
+                                  try {
+                                    await decideCase(c.id, "APPROVE", "");
+                                    await refresh();
+                                  } catch (err: any) {
+                                    setErr(err?.message ?? "Failed to submit decision");
+                                  } finally {
+                                    setBusy(false);
+                                  }
+                                }}
+                                disabled={busy}
+                              >
+                                Approve
+                              </button>
+                              <button
+                                className="h-7 rounded-md border border-red-500/60 bg-red-500/15 px-2 text-xs hover:bg-red-500/25"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  setSelectedId(c.id);
+                                  setBusy(true);
+                                  setErr(null);
+                                  try {
+                                    await decideCase(c.id, "REJECT", "");
+                                    await refresh();
+                                  } catch (err: any) {
+                                    setErr(err?.message ?? "Failed to submit decision");
+                                  } finally {
+                                    setBusy(false);
+                                  }
+                                }}
+                                disabled={busy}
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div className="lg:sticky lg:top-6 h-fit">
