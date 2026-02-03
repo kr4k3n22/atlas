@@ -16,14 +16,21 @@ async function readRole(req: NextRequest): Promise<Role | null> {
   const raw = req.cookies.get(AUTH_COOKIE)?.value;
   if (!raw) return null;
 
-  let accessToken = raw;
+  const tryParse = (value: string) => {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  };
 
-  try {
-    const decoded = decodeURIComponent(raw);
-    const parsed = JSON.parse(decoded);
-    accessToken = parsed.access_token || raw;
-  } catch {
-    // If JSON parse fails, raw might already be a JWT
+  let parsed = tryParse(raw);
+  if (!parsed) parsed = tryParse(decodeURIComponent(raw));
+  if (!parsed) parsed = tryParse(decodeURIComponent(decodeURIComponent(raw)));
+
+  let accessToken = raw;
+  if (parsed?.access_token) {
+    accessToken = parsed.access_token;
   }
 
   try {
@@ -32,6 +39,9 @@ async function readRole(req: NextRequest): Promise<Role | null> {
     if (role === "user" || role === "approver") return role;
     return null;
   } catch {
+    // Fallback: read role from cookie JSON if JWT verification fails
+    const role = parsed?.user?.user_metadata?.role;
+    if (role === "user" || role === "approver") return role;
     return null;
   }
 }
