@@ -340,30 +340,30 @@ export default function CasesPage() {
         </div>
 
         <div className="mt-6 grid flex-1 min-h-0 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="rounded-xl border border-muted/60 bg-background/40 backdrop-blur flex min-h-0 flex-col">
-            <div className="flex-1 min-h-0 overflow-auto">
-              <table className="min-w-[900px] w-full text-sm">
+          <div className="rounded-xl border border-muted/60 bg-background/40 backdrop-blur flex min-h-0 flex-col min-w-0">
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+              <table className="w-full table-fixed text-sm">
                 <thead className="border-b border-muted/60 text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-3 text-left font-medium">Status</th>
-                    <th className="px-4 py-3 text-left font-medium">Risk</th>
-                    <th className="px-4 py-3 text-left font-medium">Created</th>
-                    <th className="px-4 py-3 text-left font-medium">User</th>
-                    <th className="px-4 py-3 text-left font-medium">Tool</th>
-                    <th className="px-4 py-3 text-left font-medium hidden xl:table-cell">Message</th>
-                    <th className="px-4 py-3 text-right font-medium w-[160px]">Actions</th>
+                    <th className="px-3 py-3 text-left font-medium w-[120px]">Status</th>
+                    <th className="px-3 py-3 text-left font-medium w-[120px]">Risk</th>
+                    <th className="px-3 py-3 text-left font-medium hidden md:table-cell w-[180px]">Created</th>
+                    <th className="px-3 py-3 text-left font-medium hidden lg:table-cell w-[140px]">User</th>
+                    <th className="px-3 py-3 text-left font-medium w-[180px]">Tool</th>
+                    <th className="px-3 py-3 text-left font-medium">Message</th>
+                    <th className="px-3 py-3 text-right font-medium w-[150px]">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td className="px-4 py-6 text-muted-foreground" colSpan={7}>
+                      <td className="px-3 py-6 text-muted-foreground" colSpan={7}>
                         Loading...
                       </td>
                     </tr>
                   ) : filtered.length === 0 ? (
                     <tr>
-                      <td className="px-4 py-6 text-muted-foreground" colSpan={7}>
+                      <td className="px-3 py-6 text-muted-foreground" colSpan={7}>
                         No cases match your filters.
                       </td>
                     </tr>
@@ -379,7 +379,7 @@ export default function CasesPage() {
                             active && "bg-foreground/10"
                           )}
                         >
-                          <td className="px-4 py-3">
+                          <td className="px-3 py-3 align-top">
                             <span
                               className={cx(
                                 "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
@@ -389,7 +389,7 @@ export default function CasesPage() {
                               {c.status}
                             </span>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-3 py-3 align-top">
                             <span
                               className={cx(
                                 "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
@@ -399,24 +399,15 @@ export default function CasesPage() {
                               {c.risk_label} ({Math.round(c.risk_score)})
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-muted-foreground">
+                          <td className="px-3 py-3 text-muted-foreground align-top hidden md:table-cell">
                             {new Date(c.created_at).toLocaleString()}
                           </td>
-                          <td className="px-4 py-3">{c.user_name}</td>
-                          <td className="px-4 py-3">
-                            <div>{c.tool_name}</div>
-                            <div className="mt-1 text-xs text-muted-foreground xl:hidden">
-                              {c.user_message.length > 80
-                                ? c.user_message.slice(0, 80) + "..."
-                                : c.user_message}
-                            </div>
+                          <td className="px-3 py-3 align-top hidden lg:table-cell">{c.user_name}</td>
+                          <td className="px-3 py-3 align-top break-words">{c.tool_name}</td>
+                          <td className="px-3 py-3 text-muted-foreground align-top whitespace-normal break-words">
+                            {c.user_message}
                           </td>
-                          <td className="px-4 py-3 text-muted-foreground hidden xl:table-cell">
-                            {c.user_message.length > 90
-                              ? c.user_message.slice(0, 90) + "..."
-                              : c.user_message}
-                          </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-3 py-3 text-right align-top">
                             <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition">
                               <button
                                 className="h-7 rounded-md border border-muted/60 px-2 text-xs hover:bg-background/60"
@@ -478,7 +469,7 @@ export default function CasesPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-muted/60 bg-background/40 p-4 backdrop-blur h-full overflow-auto">
+          <div className="rounded-xl border border-muted/60 bg-background/40 p-4 backdrop-blur h-full overflow-auto min-w-0">
             {selected ? (
               <>
                 <div className="flex flex-wrap items-start justify-between gap-3">
