@@ -1,27 +1,34 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { jwtVerify } from "jose";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
-const COOKIE_NAME = "atlas_session";
-const ISSUER = "atlas-hitl-ui";
-const AUDIENCE = "atlas-hitl-ui";
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const PROJECT_REF = SUPABASE_URL.replace(/^https?:\/\//, "").split(".")[0];
+const AUTH_COOKIE = PROJECT_REF ? `sb-${PROJECT_REF}-auth-token` : "";
+const ISSUER = SUPABASE_URL ? `${SUPABASE_URL}/auth/v1` : "";
+const JWKS = SUPABASE_URL ? createRemoteJWKSet(new URL(`${SUPABASE_URL}/auth/v1/keys`)) : null;
 
-function getSecret(): Uint8Array | null {
-  const s = process.env.AUTH_SECRET;
-  if (!s || s.length < 16) return null;
-  return new TextEncoder().encode(s);
-}
+type Role = "user" | "approver";
 
-async function readRole(req: NextRequest): Promise<"user" | "approver" | null> {
-  const token = req.cookies.get(COOKIE_NAME)?.value;
-  if (!token) return null;
+async function readRole(req: NextRequest): Promise<Role | null> {
+  if (!AUTH_COOKIE || !JWKS || !ISSUER) return null;
 
-  const secret = getSecret();
-  if (!secret) return null;
+  const raw = req.cookies.get(AUTH_COOKIE)?.value;
+  if (!raw) return null;
+
+  let accessToken = raw;
+
+  // Supabase stores JSON in the cookie: {"access_token": "...", ...}
+  try {
+    const parsed = JSON.parse(raw);
+    accessToken = parsed.access_token || parsed?.[0]?.access_token || raw;
+  } catch {
+    // If it's not JSON, use raw as token
+  }
 
   try {
-    const { payload } = await jwtVerify(token, secret, { issuer: ISSUER, audience: AUDIENCE });
-    const role = String(payload.role || "");
+    const { payload } = await jwtVerify(accessToken, JWKS, { issuer: ISSUER });
+    const role = (payload as any)?.user_metadata?.role;
     if (role === "user" || role === "approver") return role;
     return null;
   } catch {
