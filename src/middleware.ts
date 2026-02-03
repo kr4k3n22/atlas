@@ -17,13 +17,11 @@ async function readRole(req: NextRequest): Promise<Role | null> {
   if (!raw) return null;
 
   let accessToken = raw;
-
-  // Supabase stores JSON in the cookie: {"access_token": "...", ...}
   try {
     const parsed = JSON.parse(raw);
-    accessToken = parsed.access_token || parsed?.[0]?.access_token || raw;
+    accessToken = parsed.access_token || raw;
   } catch {
-    // If it's not JSON, use raw as token
+    // raw is already token
   }
 
   try {
