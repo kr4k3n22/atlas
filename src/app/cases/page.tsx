@@ -229,7 +229,7 @@ export default function CasesPage() {
     <div className="min-h-screen bg-background text-foreground">
       <ThemeInit />
 
-      <div className="mx-auto max-w-6xl px-6 py-6">
+      <div className="mx-auto flex min-h-screen max-w-screen-2xl flex-col px-4 py-6 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="text-2xl font-semibold tracking-tight">Cases</div>
@@ -339,9 +339,9 @@ export default function CasesPage() {
           </select>
         </div>
 
-        <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="rounded-xl border border-muted/60 bg-background/40 backdrop-blur">
-            <div className="overflow-x-auto">
+        <div className="mt-6 grid flex-1 min-h-0 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="rounded-xl border border-muted/60 bg-background/40 backdrop-blur flex min-h-0 flex-col">
+            <div className="flex-1 min-h-0 overflow-auto">
               <table className="min-w-[900px] w-full text-sm">
                 <thead className="border-b border-muted/60 text-muted-foreground">
                   <tr>
@@ -478,9 +478,9 @@ export default function CasesPage() {
             </div>
           </div>
 
-          <div className="lg:sticky lg:top-6 h-fit">
+          <div className="rounded-xl border border-muted/60 bg-background/40 p-4 backdrop-blur h-full overflow-auto">
             {selected ? (
-              <div className="rounded-xl border border-muted/60 bg-background/40 p-4 backdrop-blur">
+              <>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold">Case details</div>
@@ -608,11 +608,9 @@ export default function CasesPage() {
                     </button>
                   </div>
                 </div>
-              </div>
+              </>
             ) : (
-              <div className="rounded-xl border border-muted/60 bg-background/40 p-6 text-sm text-muted-foreground">
-                Select a case to see details.
-              </div>
+              <div className="text-sm text-muted-foreground">Select a case to see details.</div>
             )}
           </div>
         </div>
