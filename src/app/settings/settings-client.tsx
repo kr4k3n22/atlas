@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTheme } from "next-themes";
+import { useSettings } from "@/components/settings-provider";
+import { defaultSettings } from "@/lib/settings";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -14,91 +16,24 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-
-type UserSettings = {
-  theme: "system" | "light" | "dark";
-  reviewerName: string;
-  autoOpenPreviewOnSelect: boolean;
-  enableKeyboardShortcuts: boolean;
-  defaultInboxTab: "PENDING" | "APPROVED" | "REJECTED" | "ALL";
-  riskSortDefault: "RISK_DESC" | "RISK_ASC" | "NEWEST";
-  showOnlyPendingByDefault: boolean;
-};
-
-const STORAGE_KEY = "atlas_user_settings_v1";
-
-function loadSettings(): UserSettings {
-  if (typeof window === "undefined") {
-    return {
-      theme: "system",
-      reviewerName: "Sarah",
-      autoOpenPreviewOnSelect: true,
-      enableKeyboardShortcuts: true,
-      defaultInboxTab: "PENDING",
-      riskSortDefault: "RISK_DESC",
-      showOnlyPendingByDefault: true,
-    };
-  }
-
-  const raw = window.localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    return {
-      theme: "system",
-      reviewerName: "Sarah",
-      autoOpenPreviewOnSelect: true,
-      enableKeyboardShortcuts: true,
-      defaultInboxTab: "PENDING",
-      riskSortDefault: "RISK_DESC",
-      showOnlyPendingByDefault: true,
-    };
-  }
-
-  try {
-    return JSON.parse(raw) as UserSettings;
-  } catch {
-    return {
-      theme: "system",
-      reviewerName: "Sarah",
-      autoOpenPreviewOnSelect: true,
-      enableKeyboardShortcuts: true,
-      defaultInboxTab: "PENDING",
-      riskSortDefault: "RISK_DESC",
-      showOnlyPendingByDefault: true,
-    };
-  }
-}
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 
 export default function SettingsClient() {
-  const { theme, setTheme } = useTheme();
-
-  const [settings, setSettings] = useState<UserSettings>(() => loadSettings());
-
-  // Sync theme provider with saved setting
-  useEffect(() => {
-    const t = settings.theme;
-    setTheme(t);
-  }, [settings.theme, setTheme]);
-
-  // Persist to localStorage
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  }, [settings]);
-
-  // Ensure UI reflects active theme (in case user changes via system)
-  useEffect(() => {
-    if (!theme) return;
-  }, [theme]);
+  const { settings, patchSettings, setSettings } = useSettings();
+  const { resolvedTheme } = useTheme();
 
   const settingList = useMemo(() => {
     return [
       { key: "theme", desc: "Theme: system / light / dark" },
-      { key: "reviewerName", desc: "Displayed reviewer name (for demo/audit)" },
-      { key: "autoOpenPreviewOnSelect", desc: "Auto open preview on mobile selection" },
-      { key: "enableKeyboardShortcuts", desc: "Enable J/K navigation and A/R/I actions" },
+      { key: "keyboardShortcuts", desc: "Enable J/K navigation + action hotkeys" },
       { key: "defaultInboxTab", desc: "Default inbox tab on load" },
-      { key: "riskSortDefault", desc: "Default sorting mode" },
-      { key: "showOnlyPendingByDefault", desc: "Start focused on pending work" },
+      { key: "defaultRiskFilter", desc: "Default risk filter (ALL / ROUTINE / ESCALATE / BLOCK)" },
+      { key: "previewBehavior", desc: "Preview opens on click or auto on selection" },
+      { key: "previewPosition", desc: "Preview display position" },
+      { key: "decisionRequiresNote", desc: "Require decision notes for risk thresholds" },
+      { key: "highRiskThreshold", desc: "Numeric threshold for high risk" },
+      { key: "autoRefreshInterval", desc: "Auto-refresh interval for inbox" },
     ];
   }, []);
 
@@ -107,13 +42,14 @@ export default function SettingsClient() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Appearance</CardTitle>
+          <CardDescription>Theme preference is saved and applied immediately.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
           <div className="grid gap-2">
             <Label>Theme</Label>
             <Select
               value={settings.theme}
-              onValueChange={(v) => setSettings((s) => ({ ...s, theme: v as any }))}
+              onValueChange={(v) => patchSettings({ theme: v as any })}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Theme" />
@@ -124,6 +60,9 @@ export default function SettingsClient() {
                 <SelectItem value="dark">Dark</SelectItem>
               </SelectContent>
             </Select>
+            <div className="text-xs text-muted-foreground">
+              Active theme: {resolvedTheme ?? "unknown"}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -131,47 +70,27 @@ export default function SettingsClient() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Workflow</CardTitle>
+          <CardDescription>Defaults for reviewing queues and decisions.</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4">
-          <div className="grid gap-2">
-            <Label>Reviewer name</Label>
-            <Input
-              value={settings.reviewerName}
-              onChange={(e) => setSettings((s) => ({ ...s, reviewerName: e.target.value }))}
-              placeholder="Sarah"
-            />
-            <div className="text-xs text-muted-foreground">
-              Demo-only. Later this maps to auth identity.
-            </div>
-          </div>
-
+        <CardContent className="grid gap-5">
           <div className="flex items-center justify-between gap-3">
             <div className="grid gap-1">
               <Label>Enable keyboard shortcuts</Label>
               <div className="text-xs text-muted-foreground">J/K navigate, A approve, R reject, I request info.</div>
             </div>
             <Switch
-              checked={settings.enableKeyboardShortcuts}
-              onCheckedChange={(v) => setSettings((s) => ({ ...s, enableKeyboardShortcuts: v }))}
+              checked={settings.keyboardShortcuts}
+              onCheckedChange={(v) => patchSettings({ keyboardShortcuts: v })}
             />
           </div>
 
-          <div className="flex items-center justify-between gap-3">
-            <div className="grid gap-1">
-              <Label>Auto open preview on mobile</Label>
-              <div className="text-xs text-muted-foreground">Opens the drawer when you select a row.</div>
-            </div>
-            <Switch
-              checked={settings.autoOpenPreviewOnSelect}
-              onCheckedChange={(v) => setSettings((s) => ({ ...s, autoOpenPreviewOnSelect: v }))}
-            />
-          </div>
+          <Separator />
 
           <div className="grid gap-2">
             <Label>Default inbox tab</Label>
             <Select
               value={settings.defaultInboxTab}
-              onValueChange={(v) => setSettings((s) => ({ ...s, defaultInboxTab: v as any }))}
+              onValueChange={(v) => patchSettings({ defaultInboxTab: v as any })}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Default tab" />
@@ -186,40 +105,115 @@ export default function SettingsClient() {
           </div>
 
           <div className="grid gap-2">
-            <Label>Default sort</Label>
+            <Label>Default risk filter</Label>
             <Select
-              value={settings.riskSortDefault}
-              onValueChange={(v) => setSettings((s) => ({ ...s, riskSortDefault: v as any }))}
+              value={settings.defaultRiskFilter}
+              onValueChange={(v) => patchSettings({ defaultRiskFilter: v as any })}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Default sort" />
+                <SelectValue placeholder="Risk filter" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="RISK_DESC">Risk: high to low</SelectItem>
-                <SelectItem value="RISK_ASC">Risk: low to high</SelectItem>
-                <SelectItem value="NEWEST">Newest first</SelectItem>
+                <SelectItem value="ALL">All</SelectItem>
+                <SelectItem value="ROUTINE">Routine</SelectItem>
+                <SelectItem value="ESCALATE">Escalate</SelectItem>
+                <SelectItem value="BLOCK">Block</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          <div className="flex items-center justify-between gap-3">
-            <div className="grid gap-1">
-              <Label>Focus pending by default</Label>
-              <div className="text-xs text-muted-foreground">Keeps triage tight on load.</div>
-            </div>
-            <Switch
-              checked={settings.showOnlyPendingByDefault}
-              onCheckedChange={(v) => setSettings((s) => ({ ...s, showOnlyPendingByDefault: v }))}
+          <div className="grid gap-2">
+            <Label>Preview behavior</Label>
+            <Select
+              value={settings.previewBehavior}
+              onValueChange={(v) => patchSettings({ previewBehavior: v as any })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Preview behavior" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="open_on_click">Open on click</SelectItem>
+                <SelectItem value="auto_open_on_selection">Auto open on selection</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Preview position</Label>
+            <Select
+              value={settings.previewPosition}
+              onValueChange={(v) => patchSettings({ previewPosition: v as any })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Preview position" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="right_rail">Right rail</SelectItem>
+                <SelectItem value="modal_drawer">Modal drawer</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Decision note policy</Label>
+            <Select
+              value={settings.decisionRequiresNote}
+              onValueChange={(v) => patchSettings({ decisionRequiresNote: v as any })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Decision note policy" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="off">Off</SelectItem>
+                <SelectItem value="block_only">Block only</SelectItem>
+                <SelectItem value="high_only">High risk only</SelectItem>
+                <SelectItem value="block_or_high">Block or high risk</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>High risk threshold</Label>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={settings.highRiskThreshold}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                if (!Number.isNaN(next)) patchSettings({ highRiskThreshold: next });
+              }}
             />
+            <div className="text-xs text-muted-foreground">
+              Used when decision notes are required for high risk.
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Auto-refresh interval</Label>
+            <Select
+              value={settings.autoRefreshInterval}
+              onValueChange={(v) => patchSettings({ autoRefreshInterval: v as any })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Refresh interval" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="off">Off</SelectItem>
+                <SelectItem value="30s">Every 30s</SelectItem>
+                <SelectItem value="60s">Every 60s</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Settings list (current)</CardTitle>
+          <CardTitle className="text-base">Settings overview</CardTitle>
+          <CardDescription>Current settings stored in local storage.</CardDescription>
         </CardHeader>
-        <CardContent className="text-sm">
+        <CardContent className="text-sm space-y-3">
           <ul className="list-disc pl-5 space-y-1">
             {settingList.map((s) => (
               <li key={s.key}>
@@ -228,8 +222,10 @@ export default function SettingsClient() {
               </li>
             ))}
           </ul>
-          <div className="text-xs text-muted-foreground mt-3">
-            Next: store these server-side per user after auth is added.
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setSettings(defaultSettings)}>
+              Restore defaults
+            </Button>
           </div>
         </CardContent>
       </Card>
