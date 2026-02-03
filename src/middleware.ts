@@ -17,11 +17,13 @@ async function readRole(req: NextRequest): Promise<Role | null> {
   if (!raw) return null;
 
   let accessToken = raw;
+
   try {
-    const parsed = JSON.parse(raw);
+    const decoded = decodeURIComponent(raw);
+    const parsed = JSON.parse(decoded);
     accessToken = parsed.access_token || raw;
   } catch {
-    // raw is already token
+    // If JSON parse fails, raw might already be a JWT
   }
 
   try {
