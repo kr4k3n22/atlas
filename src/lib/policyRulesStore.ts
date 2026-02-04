@@ -236,6 +236,15 @@ export function computeAggregateRiskScore(
     }
   }
 
+  // Guard against division by zero
+  if (totalWeight === 0) {
+    return {
+      score: 20,
+      rationale: `Matched ${matchedRules.length} rule(s) but total weight was zero. Default low-risk score.`,
+      policy_refs: Array.from(allPolicyRefs),
+    };
+  }
+
   const score = Math.round(Math.min(98, totalWeightedScore / totalWeight));
   const rationale = `Risk computed from ${matchedRules.length} rule(s): ${matchedRuleNames.join(", ")}. Weighted score: ${score}.`;
   const policy_refs = Array.from(allPolicyRefs);

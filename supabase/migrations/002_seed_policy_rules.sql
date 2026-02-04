@@ -57,7 +57,7 @@ INSERT INTO policy_rules (rule_name, tool_name, description, risk_threshold, ris
   '(expired|unreadable|inconsistent|missing)',
   'docs_quality',
   '["POLICY-DOCUMENTATION-007", "POLICY-OVERSIGHT-002"]'::jsonb,
-  '{"docs_status": {"docs_quality": {"match_any": ["expired", "unreadable", "inconsistent", "missing"]}}}'::jsonb,
+  '{"docs_quality": {"match_any": ["expired", "unreadable", "inconsistent", "missing"]}}'::jsonb,
   40,
   true
 ),

@@ -601,10 +601,24 @@ export default function CasesTableClient({ cases }: Props) {
                     <div className="col-span-2 underline flex items-center gap-1">
                       {c.id}
                       {slaWarning && slaWarning.level === "critical" && (
-                        <span className="text-orange-500 font-bold" title={slaWarning.message}>⚠️</span>
+                        <span 
+                          className="text-orange-500 font-bold" 
+                          title={slaWarning.message}
+                          aria-label="SLA warning: approaching deadline"
+                          role="img"
+                        >
+                          ⚠️
+                        </span>
                       )}
                       {slaWarning && slaWarning.level === "expired" && (
-                        <span className="text-red-500 font-bold" title={slaWarning.message}>🔴</span>
+                        <span 
+                          className="text-red-500 font-bold" 
+                          title={slaWarning.message}
+                          aria-label="SLA expired: deadline exceeded"
+                          role="img"
+                        >
+                          🔴
+                        </span>
                       )}
                     </div>
                     <div className="col-span-2">{c.user_display}</div>
