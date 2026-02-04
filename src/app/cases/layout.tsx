@@ -5,7 +5,7 @@ export default function CasesLayout({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-screen">
       <ApproverTopbar />
-      <main className="mx-auto max-w-5xl p-6">{children}</main>
+      <main className="w-full">{children}</main>
     </div>
   );
 }
