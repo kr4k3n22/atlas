@@ -2,6 +2,8 @@
 
 This document describes the Supabase tables used by the Atlas HITL (Human-in-the-Loop) system.
 
+> **⚠️ IMPORTANT:** When applying these SQL migrations, copy the SQL files from `supabase/migrations/` directory directly. Do NOT manually type SQL from the documentation as it may contain descriptive shorthand notation (like "0-100" in descriptions) which is not valid SQL syntax.
+
 ## Tables Overview
 
 ### 1. `policy_rules` Table
@@ -133,6 +135,8 @@ Logs executed tool actions.
 
 ### 1. Run Migrations
 
+> **📝 Note:** Copy SQL content directly from the migration files. The SQL syntax must be exact - use the files in `supabase/migrations/` as-is.
+
 Execute the migration files in order:
 
 ```bash
@@ -144,6 +148,13 @@ supabase db push
 # 1. 001_create_policy_rules_table.sql
 # 2. 002_seed_policy_rules.sql
 ```
+
+**For Manual Execution:**
+1. Open Supabase SQL Editor
+2. Copy the **entire contents** of `supabase/migrations/001_create_policy_rules_table.sql`
+3. Paste into SQL Editor and execute
+4. Verify success (you should see "Success. No rows returned")
+5. Repeat for `002_seed_policy_rules.sql`
 
 ### 2. Configure Environment Variables
 
