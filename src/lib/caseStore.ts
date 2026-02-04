@@ -3,6 +3,7 @@ import casesJson from "@/data/mock_cases.json";
 import { CaseSchema } from "@/lib/schema";
 import { appendAuditEvent } from "@/lib/auditStore";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { executeAction } from "@/lib/actionExecutionStore";
 import type { z } from "zod";
 
 type CaseRecord = z.infer<typeof CaseSchema> & {
@@ -141,6 +142,17 @@ export async function applyDecision(input: {
     case_id: updated.id,
     detail: note || undefined,
   });
+
+  if (decision === "APPROVE") {
+    await executeAction({
+      case_id: updated.id,
+      requested_by: updated.user_display ?? null,
+      approver: "reviewer",
+      tool_name: updated.tool_name,
+      tool_args: updated.tool_args_redacted ?? {},
+      decision_source: "APPROVED",
+    });
+  }
 
   return stripInternal(normalizeRow(updated));
 }
