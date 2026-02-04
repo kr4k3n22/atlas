@@ -41,6 +41,35 @@ function badgeClass(label: string) {
   return "bg-slate-600/60 text-slate-100 border-slate-500/60";
 }
 
+function formatKey(key: string) {
+  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function renderValue(value: unknown) {
+  if (value === null || value === undefined) {
+    return <div className="text-xs text-muted-foreground">—</div>;
+  }
+  if (Array.isArray(value)) {
+    return (
+      <ul className="list-disc pl-4 text-sm">
+        {value.map((item, i) => (
+          <li key={`${item}-${i}`} className="break-words">
+            {typeof item === "string" ? item : JSON.stringify(item)}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  if (typeof value === "object") {
+    return (
+      <pre className="mt-1 overflow-auto rounded-md bg-black/30 p-2 text-xs">
+        {JSON.stringify(value, null, 2)}
+      </pre>
+    );
+  }
+  return <div className="text-sm break-words">{String(value)}</div>;
+}
+
 async function fetchCases(): Promise<CaseRecord[]> {
   const res = await fetch("/api/cases", { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to load cases");
@@ -291,7 +320,7 @@ export default function CasesPage() {
           </select>
         </div>
 
-        <div className="mt-6 grid flex-1 min-h-0 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="mt-6 grid flex-1 min-h-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,480px)]">
           <div className="rounded-xl border border-muted/60 bg-background/40 backdrop-blur flex min-h-0 flex-col min-w-0">
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
               <table className="w-full table-fixed text-sm">
@@ -465,9 +494,20 @@ export default function CasesPage() {
 
                   <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
                     <div className="text-xs font-semibold text-muted-foreground">Tool args (redacted)</div>
-                    <pre className="mt-2 overflow-auto text-xs">
-                      {JSON.stringify(selected.tool_args_redacted ?? {}, null, 2)}
-                    </pre>
+                    {Object.keys(selected.tool_args_redacted ?? {}).length ? (
+                      <div className="mt-2 grid gap-2">
+                        {Object.entries(selected.tool_args_redacted ?? {}).map(([key, value]) => (
+                          <div key={key} className="rounded-md border border-muted/40 bg-background/40 p-2">
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              {formatKey(key)}
+                            </div>
+                            <div className="mt-1">{renderValue(value)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-sm text-muted-foreground">None</div>
+                    )}
                   </div>
 
                   <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
