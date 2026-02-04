@@ -45,7 +45,11 @@ function formatKey(key: string) {
   return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function renderValue(value: unknown) {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function renderInlineValue(value: unknown) {
   if (value === null || value === undefined) {
     return <div className="text-xs text-muted-foreground">—</div>;
   }
@@ -53,14 +57,14 @@ function renderValue(value: unknown) {
     return (
       <ul className="list-disc pl-4 text-sm">
         {value.map((item, i) => (
-          <li key={`${item}-${i}`} className="break-words">
+          <li key={`${String(item)}-${i}`} className="break-words">
             {typeof item === "string" ? item : JSON.stringify(item)}
           </li>
         ))}
       </ul>
     );
   }
-  if (typeof value === "object") {
+  if (isPlainObject(value)) {
     return (
       <pre className="mt-1 overflow-auto rounded-md bg-black/30 p-2 text-xs">
         {JSON.stringify(value, null, 2)}
@@ -68,6 +72,26 @@ function renderValue(value: unknown) {
     );
   }
   return <div className="text-sm break-words">{String(value)}</div>;
+}
+
+function renderObjectGrid(obj: Record<string, unknown>) {
+  const entries = Object.entries(obj);
+  if (!entries.length) {
+    return <div className="text-xs text-muted-foreground">—</div>;
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      {entries.map(([key, value]) => (
+        <div key={key} className="grid grid-cols-[140px_minmax(0,1fr)] gap-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {formatKey(key)}
+          </div>
+          <div>{renderInlineValue(value)}</div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 async function fetchCases(): Promise<CaseRecord[]> {
@@ -320,8 +344,8 @@ export default function CasesPage() {
           </select>
         </div>
 
-        <div className="mt-6 grid flex-1 min-h-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,480px)]">
-          <div className="rounded-xl border border-muted/60 bg-background/40 backdrop-blur flex min-h-0 flex-col min-w-0">
+        <div className="mt-6 grid flex-1 min-h-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,520px)] items-start">
+          <div className="rounded-xl border border-muted/60 bg-background/40 backdrop-blur flex min-h-0 flex-col min-w-0 h-[calc(100vh-320px)]">
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
               <table className="w-full table-fixed text-sm">
                 <thead className="border-b border-muted/60 text-muted-foreground">
@@ -450,7 +474,7 @@ export default function CasesPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-muted/60 bg-background/40 p-4 backdrop-blur h-full overflow-auto min-w-0">
+          <div className="rounded-xl border border-muted/60 bg-background/40 p-4 backdrop-blur h-[calc(100vh-320px)] min-w-0 flex flex-col">
             {selected ? (
               <>
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -481,7 +505,7 @@ export default function CasesPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-4">
+                <div className="mt-4 flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
                   <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
                     <div className="text-xs font-semibold text-muted-foreground">User message</div>
                     <pre className="mt-2 whitespace-pre-wrap text-sm">{selected.user_message}</pre>
@@ -495,13 +519,13 @@ export default function CasesPage() {
                   <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
                     <div className="text-xs font-semibold text-muted-foreground">Tool args (redacted)</div>
                     {Object.keys(selected.tool_args_redacted ?? {}).length ? (
-                      <div className="mt-2 grid gap-2">
+                      <div className="mt-2 grid gap-3">
                         {Object.entries(selected.tool_args_redacted ?? {}).map(([key, value]) => (
-                          <div key={key} className="rounded-md border border-muted/40 bg-background/40 p-2">
+                          <div key={key} className="rounded-lg border border-muted/40 bg-background/40 p-3">
                             <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                               {formatKey(key)}
                             </div>
-                            <div className="mt-1">{renderValue(value)}</div>
+                            {isPlainObject(value) ? renderObjectGrid(value) : <div className="mt-2">{renderInlineValue(value)}</div>}
                           </div>
                         ))}
                       </div>
@@ -524,71 +548,71 @@ export default function CasesPage() {
                       <div className="mt-2 text-sm text-muted-foreground">None</div>
                     )}
                   </div>
-                </div>
 
-                <div className="mt-4 rounded-lg border border-muted/60 bg-background/30 p-3">
-                  <div className="text-xs font-semibold text-muted-foreground">Audit trail</div>
-                  {selected.audit_trail?.length ? (
-                    <div className="mt-2 space-y-2 text-sm">
-                      {selected.audit_trail.map((a, i) => (
-                        <div key={a.ts + ":" + i} className="rounded-md border border-muted/40 p-2">
-                          <div className="text-xs text-muted-foreground">
-                            {new Date(a.ts).toLocaleString()} - {a.actor} - {a.action}
+                  <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
+                    <div className="text-xs font-semibold text-muted-foreground">Audit trail</div>
+                    {selected.audit_trail?.length ? (
+                      <div className="mt-2 space-y-2 text-sm">
+                        {selected.audit_trail.map((a, i) => (
+                          <div key={a.ts + ":" + i} className="rounded-md border border-muted/40 p-2">
+                            <div className="text-xs text-muted-foreground">
+                              {new Date(a.ts).toLocaleString()} - {a.actor} - {a.action}
+                            </div>
+                            {a.detail ? (
+                              <div className="mt-1 whitespace-pre-wrap text-sm">{a.detail}</div>
+                            ) : null}
                           </div>
-                          {a.detail ? (
-                            <div className="mt-1 whitespace-pre-wrap text-sm">{a.detail}</div>
-                          ) : null}
-                        </div>
-                      ))}
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-sm text-muted-foreground">No audit entries.</div>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
+                    <div className="text-xs font-semibold text-muted-foreground">Decision note</div>
+                    <textarea
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      placeholder="Reasoning, next steps, or info request..."
+                      className="mt-2 h-24 w-full resize-y rounded-md border border-muted/60 bg-background/40 p-2 text-sm outline-none focus:ring-2 focus:ring-foreground/30"
+                    />
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        disabled={busy}
+                        onClick={() => onDecision("APPROVE")}
+                        className={cx(
+                          "h-9 rounded-md border px-3 text-sm shadow-sm",
+                          "border-green-500/60 bg-green-500/20 hover:bg-green-500/30",
+                          busy && "opacity-50"
+                        )}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        disabled={busy}
+                        onClick={() => onDecision("REJECT")}
+                        className={cx(
+                          "h-9 rounded-md border px-3 text-sm shadow-sm",
+                          "border-red-500/60 bg-red-500/20 hover:bg-red-500/30",
+                          busy && "opacity-50"
+                        )}
+                      >
+                        Reject
+                      </button>
+                      <button
+                        disabled={busy}
+                        onClick={() => onDecision("REQUEST_INFO")}
+                        className={cx(
+                          "h-9 rounded-md border px-3 text-sm shadow-sm",
+                          "border-yellow-500/60 bg-yellow-500/20 hover:bg-yellow-500/30",
+                          busy && "opacity-50"
+                        )}
+                      >
+                        Request info
+                      </button>
                     </div>
-                  ) : (
-                    <div className="mt-2 text-sm text-muted-foreground">No audit entries.</div>
-                  )}
-                </div>
-
-                <div className="mt-4 rounded-lg border border-muted/60 bg-background/30 p-3">
-                  <div className="text-xs font-semibold text-muted-foreground">Decision note</div>
-                  <textarea
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="Reasoning, next steps, or info request..."
-                    className="mt-2 h-24 w-full resize-y rounded-md border border-muted/60 bg-background/40 p-2 text-sm outline-none focus:ring-2 focus:ring-foreground/30"
-                  />
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      disabled={busy}
-                      onClick={() => onDecision("APPROVE")}
-                      className={cx(
-                        "h-9 rounded-md border px-3 text-sm shadow-sm",
-                        "border-green-500/60 bg-green-500/20 hover:bg-green-500/30",
-                        busy && "opacity-50"
-                      )}
-                    >
-                      Approve
-                    </button>
-                    <button
-                      disabled={busy}
-                      onClick={() => onDecision("REJECT")}
-                      className={cx(
-                        "h-9 rounded-md border px-3 text-sm shadow-sm",
-                        "border-red-500/60 bg-red-500/20 hover:bg-red-500/30",
-                        busy && "opacity-50"
-                      )}
-                    >
-                      Reject
-                    </button>
-                    <button
-                      disabled={busy}
-                      onClick={() => onDecision("REQUEST_INFO")}
-                      className={cx(
-                        "h-9 rounded-md border px-3 text-sm shadow-sm",
-                        "border-yellow-500/60 bg-yellow-500/20 hover:bg-yellow-500/30",
-                        busy && "opacity-50"
-                      )}
-                    >
-                      Request info
-                    </button>
                   </div>
                 </div>
               </>
