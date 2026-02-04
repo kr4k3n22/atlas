@@ -110,9 +110,9 @@ function matchConditions(conditions: any, input: any): boolean {
   for (const [key, value] of Object.entries(conditions)) {
     if (typeof value === "object" && value !== null) {
       // Handle special operators
-      if ("match_any" in value && Array.isArray(value.match_any)) {
+      if ("match_any" in value && Array.isArray((value as any).match_any)) {
         const inputValue = getNestedValue(input, key);
-        const matched = value.match_any.some((v: any) => {
+        const matched = (value as any).match_any.some((v: any) => {
           if (typeof inputValue === "string") {
             return inputValue.includes(v) || inputValue === v;
           }
@@ -121,13 +121,15 @@ function matchConditions(conditions: any, input: any): boolean {
         if (!matched) return false;
       } else if ("not" in value) {
         const inputValue = getNestedValue(input, key);
-        if (inputValue === value.not) return false;
+        if (inputValue === (value as any).not) return false;
       } else if ("lte" in value) {
         const inputValue = getNestedValue(input, key);
-        if (typeof inputValue !== "number" || inputValue > value.lte) return false;
+        const lteValue = (value as any).lte;
+        if (typeof inputValue !== "number" || typeof lteValue !== "number" || inputValue > lteValue) return false;
       } else if ("gte" in value) {
         const inputValue = getNestedValue(input, key);
-        if (typeof inputValue !== "number" || inputValue < value.gte) return false;
+        const gteValue = (value as any).gte;
+        if (typeof inputValue !== "number" || typeof gteValue !== "number" || inputValue < gteValue) return false;
       } else {
         // Nested object - recurse
         const inputNested = getNestedValue(input, key);

@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { getCaseAgeInHours, getHoursUntilExpiration } from "@/lib/slaChecker";
 
 type CaseRow = {
   id: string;
@@ -154,6 +155,37 @@ function fmtTs(iso: string) {
   } catch {
     return iso;
   }
+}
+
+function getSlaWarning(createdAt: string, status: string) {
+  if (status !== "PENDING_REVIEW" && status !== "NEEDS_MORE_INFO") {
+    return null;
+  }
+
+  const hoursRemaining = getHoursUntilExpiration(createdAt);
+  const ageHours = getCaseAgeInHours(createdAt);
+
+  if (hoursRemaining <= 0) {
+    return {
+      level: "expired",
+      message: `⚠️ SLA EXPIRED (${Math.round(ageHours)}h old)`,
+      className: "bg-red-600 text-white",
+    };
+  } else if (hoursRemaining <= 6) {
+    return {
+      level: "critical",
+      message: `⚠️ ${Math.round(hoursRemaining)}h until SLA expires`,
+      className: "bg-orange-500 text-white",
+    };
+  } else if (hoursRemaining <= 24) {
+    return {
+      level: "warning",
+      message: `${Math.round(hoursRemaining)}h until SLA expires`,
+      className: "bg-yellow-500 text-white",
+    };
+  }
+
+  return null;
 }
 
 function isTypingTarget(t: EventTarget | null) {
@@ -367,6 +399,8 @@ export default function CasesTableClient({ cases }: Props) {
   }, [selectedId, note, settings.enableKeyboardShortcuts, settings.autoOpenPreviewOnSelect]);
 
   function PreviewContent({ c }: { c: CaseRow }) {
+    const slaWarning = getSlaWarning(c.created_at, c.status);
+
     return (
       <div className="space-y-4">
         <div className="flex items-start justify-between gap-3">
@@ -384,6 +418,12 @@ export default function CasesTableClient({ cases }: Props) {
             </Link>
           </div>
         </div>
+
+        {slaWarning && (
+          <div className={`rounded-md px-3 py-2 text-sm font-semibold ${slaWarning.className}`}>
+            {slaWarning.message}
+          </div>
+        )}
 
         <div className="rounded-md border bg-background p-3 text-sm space-y-2">
           <div><span className="text-muted-foreground">User:</span> {c.user_display}</div>
@@ -544,6 +584,7 @@ export default function CasesTableClient({ cases }: Props) {
             <div>
               {filtered.map((c) => {
                 const isSelected = c.id === selectedId;
+                const slaWarning = getSlaWarning(c.created_at, c.status);
                 return (
                   <button
                     key={c.id}
@@ -557,7 +598,15 @@ export default function CasesTableClient({ cases }: Props) {
                         : " hover:bg-muted/20")
                     }
                   >
-                    <div className="col-span-2 underline">{c.id}</div>
+                    <div className="col-span-2 underline flex items-center gap-1">
+                      {c.id}
+                      {slaWarning && slaWarning.level === "critical" && (
+                        <span className="text-orange-500 font-bold" title={slaWarning.message}>⚠️</span>
+                      )}
+                      {slaWarning && slaWarning.level === "expired" && (
+                        <span className="text-red-500 font-bold" title={slaWarning.message}>🔴</span>
+                      )}
+                    </div>
                     <div className="col-span-2">{c.user_display}</div>
                     <div className="col-span-4 font-mono text-xs leading-5">{c.tool_name}</div>
                     <div className="col-span-2">{riskBadge(c.risk_label)}</div>
