@@ -11,7 +11,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
-  const c = getCaseById(id);
+  const c = await getCaseById(id);
   if (!c) return new Response("Not found", { status: 404 });
   return Response.json(c);
 }
@@ -23,7 +23,7 @@ export async function POST(
   const { id } = await context.params;
   const body = DecisionBody.parse(await request.json());
 
-  const updated = applyDecision({ id, decision: body.decision, note: body.note });
+  const updated = await applyDecision({ id, decision: body.decision, note: body.note });
   if (!updated) return new Response("Not found", { status: 404 });
 
   return Response.json(updated);
