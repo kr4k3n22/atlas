@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useTheme } from "next-themes";
+import { Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -23,6 +25,7 @@ type Session = {
 
 export function ApproverTopbar() {
   const [session, setSession] = React.useState<Session | null>(null);
+  const { resolvedTheme } = useTheme();
 
   React.useEffect(() => {
     fetch("/api/auth/me")
@@ -32,6 +35,7 @@ export function ApproverTopbar() {
   }, []);
 
   const email = session?.session?.email || "Approver";
+  const isDark = (resolvedTheme ?? "dark") === "dark";
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -40,43 +44,53 @@ export function ApproverTopbar() {
 
   return (
     <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
-      <div className="mx-auto max-w-5xl px-6 py-3 flex items-center justify-between">
+      <div className="mx-auto w-full max-w-none px-6 py-3 flex items-center justify-between">
         <Link href="/cases" className="font-semibold tracking-tight">
           ATLAS
         </Link>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="h-9 px-3 max-w-[320px] truncate">
-              {email}
-            </Button>
-          </DropdownMenuTrigger>
+        <div className="flex items-center gap-2">
+          <div
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-muted/60 bg-background/40 text-foreground"
+            aria-label={isDark ? "Dark mode" : "Light mode"}
+            title={isDark ? "Dark mode" : "Light mode"}
+          >
+            {isDark ? <Moon size={16} /> : <Sun size={16} />}
+          </div>
 
-          <DropdownMenuContent align="end" className="w-64">
-            <DropdownMenuLabel className="truncate">{email}</DropdownMenuLabel>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="h-9 px-3 max-w-[320px] truncate">
+                {email}
+              </Button>
+            </DropdownMenuTrigger>
 
-            <DropdownMenuSeparator />
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel className="truncate">{email}</DropdownMenuLabel>
 
-            <DropdownMenuItem asChild>
-              <Link href="/cases">Inbox</Link>
-            </DropdownMenuItem>
+              <DropdownMenuSeparator />
 
-            <DropdownMenuItem asChild>
-              <Link href="/settings">Settings</Link>
-            </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/cases">Inbox</Link>
+              </DropdownMenuItem>
 
-            <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/settings">Settings</Link>
+              </DropdownMenuItem>
 
-            <DropdownMenuItem
-              onSelect={(e) => {
-                e.preventDefault();
-                void logout();
-              }}
-            >
-              Logout
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <DropdownMenuSeparator />
+
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  void logout();
+                }}
+              >
+                Logout
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </header>
   );
