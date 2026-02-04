@@ -100,7 +100,7 @@ self.__SERVER_FILES_MANIFEST={
         "transform": "lodash/{{member}}"
       }
     },
-    "outputFileTracingRoot": "/home/atlas/atlas-hitl-ui",
+    "outputFileTracingRoot": "/home/runner/work/atlas/atlas",
     "cacheComponents": false,
     "cacheLife": {
       "default": {
@@ -157,7 +157,7 @@ self.__SERVER_FILES_MANIFEST={
       "proxyPrefetch": "flexible",
       "optimisticClientCache": true,
       "manualClientBasePath": false,
-      "cpus": 31,
+      "cpus": 3,
       "memoryBasedWorkersCount": false,
       "imgOptConcurrency": null,
       "imgOptTimeoutInSeconds": 7,
@@ -293,11 +293,11 @@ self.__SERVER_FILES_MANIFEST={
     "bundlePagesRouterDependencies": false,
     "configFileName": "next.config.ts",
     "turbopack": {
-      "root": "/home/atlas/atlas-hitl-ui"
+      "root": "/home/runner/work/atlas/atlas"
     },
     "distDirRoot": ".next"
   },
-  "appDir": "/home/atlas/atlas-hitl-ui",
+  "appDir": "/home/runner/work/atlas/atlas",
   "relativeAppDir": "",
   "files": [
     ".next/routes-manifest.json",

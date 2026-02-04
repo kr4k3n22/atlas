@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { getCaseAgeInHours, getHoursUntilExpiration } from "@/lib/slaChecker";
 
 type CaseRow = {
   id: string;
@@ -30,7 +31,7 @@ type CaseRow = {
   risk_score: number;
   risk_rationale: string;
   policy_refs: string[];
-  status: "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "NEEDS_MORE_INFO";
+  status: "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "NEEDS_MORE_INFO" | "EXPIRED";
   created_at: string;
   history: { ts: string; actor: string; event: string; detail: string }[];
 };
@@ -40,7 +41,7 @@ type UserSettings = {
   reviewerName: string;
   autoOpenPreviewOnSelect: boolean;
   enableKeyboardShortcuts: boolean;
-  defaultInboxTab: "PENDING" | "APPROVED" | "REJECTED" | "ALL";
+  defaultInboxTab: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | "ALL";
   riskSortDefault: "RISK_DESC" | "RISK_ASC" | "NEWEST";
   showOnlyPendingByDefault: boolean;
 };
@@ -122,6 +123,12 @@ function statusBadge(status: CaseRow["status"]) {
         NEEDS_MORE_INFO
       </Badge>
     );
+  if (status === "EXPIRED")
+    return (
+      <Badge className="bg-gray-500 text-white hover:bg-gray-500">
+        EXPIRED
+      </Badge>
+    );
   return <Badge variant="secondary">PENDING_REVIEW</Badge>;
 }
 
@@ -129,6 +136,7 @@ function rowTone(status: CaseRow["status"]) {
   if (status === "APPROVED") return "bg-green-50/40 dark:bg-green-950/20";
   if (status === "REJECTED") return "bg-red-50/40 dark:bg-red-950/20";
   if (status === "NEEDS_MORE_INFO") return "bg-yellow-50/40 dark:bg-yellow-950/20";
+  if (status === "EXPIRED") return "bg-gray-50/40 dark:bg-gray-950/20";
   return "";
 }
 
@@ -147,6 +155,37 @@ function fmtTs(iso: string) {
   } catch {
     return iso;
   }
+}
+
+function getSlaWarning(createdAt: string, status: string) {
+  if (status !== "PENDING_REVIEW" && status !== "NEEDS_MORE_INFO") {
+    return null;
+  }
+
+  const hoursRemaining = getHoursUntilExpiration(createdAt);
+  const ageHours = getCaseAgeInHours(createdAt);
+
+  if (hoursRemaining <= 0) {
+    return {
+      level: "expired",
+      message: `⚠️ SLA EXPIRED (${Math.round(ageHours)}h old)`,
+      className: "bg-red-600 text-white",
+    };
+  } else if (hoursRemaining <= 6) {
+    return {
+      level: "critical",
+      message: `⚠️ ${Math.round(hoursRemaining)}h until SLA expires`,
+      className: "bg-orange-500 text-white",
+    };
+  } else if (hoursRemaining <= 24) {
+    return {
+      level: "warning",
+      message: `${Math.round(hoursRemaining)}h until SLA expires`,
+      className: "bg-yellow-500 text-white",
+    };
+  }
+
+  return null;
 }
 
 function isTypingTarget(t: EventTarget | null) {
@@ -169,7 +208,7 @@ export default function CasesTableClient({ cases }: Props) {
   const [settings, setSettings] = useState<UserSettings>(() => loadSettings());
 
   const [q, setQ] = useState("");
-  const [tab, setTab] = useState<"PENDING" | "APPROVED" | "REJECTED" | "ALL">(
+  const [tab, setTab] = useState<"PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | "ALL">(
     settings.showOnlyPendingByDefault ? "PENDING" : settings.defaultInboxTab
   );
   const [riskFilter, setRiskFilter] = useState<"ALL" | "ROUTINE" | "ESCALATE" | "BLOCK">(
@@ -218,6 +257,8 @@ export default function CasesTableClient({ cases }: Props) {
       list = list.filter((c) => c.status === "APPROVED");
     } else if (tab === "REJECTED") {
       list = list.filter((c) => c.status === "REJECTED");
+    } else if (tab === "EXPIRED") {
+      list = list.filter((c) => c.status === "EXPIRED");
     }
 
     if (riskFilter !== "ALL") list = list.filter((c) => c.risk_label === riskFilter);
@@ -248,7 +289,8 @@ export default function CasesTableClient({ cases }: Props) {
     ).length;
     const approved = rows.filter((c) => c.status === "APPROVED").length;
     const rejected = rows.filter((c) => c.status === "REJECTED").length;
-    return { pending, approved, rejected, all: rows.length };
+    const expired = rows.filter((c) => c.status === "EXPIRED").length;
+    return { pending, approved, rejected, expired, all: rows.length };
   }, [rows]);
 
   const selected = useMemo(() => {
@@ -357,6 +399,8 @@ export default function CasesTableClient({ cases }: Props) {
   }, [selectedId, note, settings.enableKeyboardShortcuts, settings.autoOpenPreviewOnSelect]);
 
   function PreviewContent({ c }: { c: CaseRow }) {
+    const slaWarning = getSlaWarning(c.created_at, c.status);
+
     return (
       <div className="space-y-4">
         <div className="flex items-start justify-between gap-3">
@@ -374,6 +418,12 @@ export default function CasesTableClient({ cases }: Props) {
             </Link>
           </div>
         </div>
+
+        {slaWarning && (
+          <div className={`rounded-md px-3 py-2 text-sm font-semibold ${slaWarning.className}`}>
+            {slaWarning.message}
+          </div>
+        )}
 
         <div className="rounded-md border bg-background p-3 text-sm space-y-2">
           <div><span className="text-muted-foreground">User:</span> {c.user_display}</div>
@@ -470,6 +520,7 @@ export default function CasesTableClient({ cases }: Props) {
               <TabsTrigger value="PENDING">Pending ({counts.pending})</TabsTrigger>
               <TabsTrigger value="APPROVED">Approved ({counts.approved})</TabsTrigger>
               <TabsTrigger value="REJECTED">Rejected ({counts.rejected})</TabsTrigger>
+              <TabsTrigger value="EXPIRED">Expired ({counts.expired})</TabsTrigger>
               <TabsTrigger value="ALL">All ({counts.all})</TabsTrigger>
             </TabsList>
           </Tabs>
@@ -533,6 +584,7 @@ export default function CasesTableClient({ cases }: Props) {
             <div>
               {filtered.map((c) => {
                 const isSelected = c.id === selectedId;
+                const slaWarning = getSlaWarning(c.created_at, c.status);
                 return (
                   <button
                     key={c.id}
@@ -546,7 +598,29 @@ export default function CasesTableClient({ cases }: Props) {
                         : " hover:bg-muted/20")
                     }
                   >
-                    <div className="col-span-2 underline">{c.id}</div>
+                    <div className="col-span-2 underline flex items-center gap-1">
+                      {c.id}
+                      {slaWarning && slaWarning.level === "critical" && (
+                        <span 
+                          className="text-orange-500 font-bold" 
+                          title={slaWarning.message}
+                          aria-label="SLA warning: approaching deadline"
+                          role="img"
+                        >
+                          ⚠️
+                        </span>
+                      )}
+                      {slaWarning && slaWarning.level === "expired" && (
+                        <span 
+                          className="text-red-500 font-bold" 
+                          title={slaWarning.message}
+                          aria-label="SLA expired: deadline exceeded"
+                          role="img"
+                        >
+                          🔴
+                        </span>
+                      )}
+                    </div>
                     <div className="col-span-2">{c.user_display}</div>
                     <div className="col-span-4 font-mono text-xs leading-5">{c.tool_name}</div>
                     <div className="col-span-2">{riskBadge(c.risk_label)}</div>

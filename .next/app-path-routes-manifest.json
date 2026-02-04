@@ -1,13 +1,18 @@
 {
   "/_global-error/page": "/_global-error",
   "/_not-found/page": "/_not-found",
+  "/api/actions/execute/route": "/api/actions/execute",
+  "/api/audit/route": "/api/audit",
   "/api/auth/login/route": "/api/auth/login",
   "/api/auth/logout/route": "/api/auth/logout",
   "/api/auth/me/route": "/api/auth/me",
   "/api/auth/register/route": "/api/auth/register",
   "/api/cases/[id]/route": "/api/cases/[id]",
+  "/api/cases/check-sla/route": "/api/cases/check-sla",
   "/api/cases/route": "/api/cases",
+  "/api/policy/decide/route": "/api/policy/decide",
   "/approver/login/page": "/approver/login",
+  "/approver/register/page": "/approver/register",
   "/cases/[id]/page": "/cases/[id]",
   "/cases/page": "/cases",
   "/chat/page": "/chat",
@@ -15,5 +20,7 @@
   "/login/page": "/login",
   "/page": "/",
   "/register/page": "/register",
-  "/settings/page": "/settings"
+  "/reset-password/page": "/reset-password",
+  "/settings/page": "/settings",
+  "/update-password/page": "/update-password"
 }

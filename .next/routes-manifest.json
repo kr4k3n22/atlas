@@ -58,6 +58,18 @@
       "namedRegex": "^/_not\\-found(?:/)?$"
     },
     {
+      "page": "/api/actions/execute",
+      "regex": "^/api/actions/execute(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/actions/execute(?:/)?$"
+    },
+    {
+      "page": "/api/audit",
+      "regex": "^/api/audit(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/audit(?:/)?$"
+    },
+    {
       "page": "/api/auth/login",
       "regex": "^/api/auth/login(?:/)?$",
       "routeKeys": {},
@@ -88,10 +100,28 @@
       "namedRegex": "^/api/cases(?:/)?$"
     },
     {
+      "page": "/api/cases/check-sla",
+      "regex": "^/api/cases/check\\-sla(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/cases/check\\-sla(?:/)?$"
+    },
+    {
+      "page": "/api/policy/decide",
+      "regex": "^/api/policy/decide(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/policy/decide(?:/)?$"
+    },
+    {
       "page": "/approver/login",
       "regex": "^/approver/login(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/approver/login(?:/)?$"
+    },
+    {
+      "page": "/approver/register",
+      "regex": "^/approver/register(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/approver/register(?:/)?$"
     },
     {
       "page": "/cases",
@@ -124,10 +154,22 @@
       "namedRegex": "^/register(?:/)?$"
     },
     {
+      "page": "/reset-password",
+      "regex": "^/reset\\-password(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/reset\\-password(?:/)?$"
+    },
+    {
       "page": "/settings",
       "regex": "^/settings(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/settings(?:/)?$"
+    },
+    {
+      "page": "/update-password",
+      "regex": "^/update\\-password(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/update\\-password(?:/)?$"
     }
   ],
   "dataRoutes": [],

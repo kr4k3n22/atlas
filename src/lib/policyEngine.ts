@@ -1,3 +1,9 @@
+import {
+  getPolicyRulesForTool,
+  matchRulesAgainstInput,
+  computeAggregateRiskScore,
+} from "@/lib/policyRulesStore";
+
 export type PolicyDecision = {
   decision: "ALLOW" | "NEEDS_HUMAN" | "BLOCK";
   risk_label: "ROUTINE" | "ESCALATE" | "BLOCK";
@@ -134,7 +140,7 @@ const normalizeAbility = (value?: string) => {
   return v || "normal";
 };
 
-export function evaluatePolicy(input: PolicyInput): PolicyDecision {
+export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision> {
   const decisionType = input.decision_context.decision_type;
   const negativeDecision = ["deny", "reduce", "suspend"].includes(decisionType);
 
@@ -228,6 +234,68 @@ export function evaluatePolicy(input: PolicyInput): PolicyDecision {
     label = "ROUTINE";
   }
 
+  // Phase 3: Load applicable policy rules from database and compute risk score
+  const toolName = `benefit_${decisionType}`;
+  let risk_score = 20;
+  let risk_rationale = "Routine case with verified evidence and no harm/rights indicators.";
+  let policy_refs = ["POLICY-LOW-RISK-001"];
+
+  try {
+    // Load rules for this tool
+    const allRules = await getPolicyRulesForTool(toolName);
+    
+    // Match rules against current input
+    const matchedRules = matchRulesAgainstInput(allRules, {
+      decision_context: input.decision_context,
+      structured_inputs: input.structured_inputs,
+      harm_signal_present: harmSignalPresent,
+      appeal_or_review_requested: input.appeal_or_review_requested,
+      ability_to_engage: abilityToEngage,
+      fraud_signals: fraudSignals,
+      docs_status: docsStatus,
+      docs_quality: docsQuality,
+      idv_status: idvStatus,
+    });
+
+    // Compute aggregate risk score from matched rules
+    if (matchedRules.length > 0) {
+      const ruleResult = computeAggregateRiskScore(matchedRules, {
+        decision_context: input.decision_context,
+        structured_inputs: input.structured_inputs,
+        fraud_signals: fraudSignals,
+        harm_signal_present: harmSignalPresent,
+        docs_quality: docsQuality,
+        idv_status: idvStatus,
+      });
+      risk_score = ruleResult.score;
+      risk_rationale = ruleResult.rationale;
+      policy_refs = ruleResult.policy_refs;
+    }
+  } catch (error) {
+    console.error("Error loading policy rules, falling back to heuristic:", error);
+    // Fallback to original heuristic if database query fails
+    risk_score =
+      label === "BLOCK"
+        ? Math.min(98, 90 + (fraudConfirmed ? 6 : 0))
+        : label === "ESCALATE"
+          ? 70 + (harmSignalPresent === "strong" ? 10 : harmSignalPresent === "moderate" ? 6 : harmSignalPresent === "weak" ? 3 : 0)
+          : 20;
+
+    policy_refs =
+      label === "BLOCK"
+        ? ["POLICY-INELIGIBLE-004", "POLICY-FRAUD-005"]
+        : label === "ESCALATE"
+          ? ["POLICY-HARM-RIGHTS-001", "POLICY-OVERSIGHT-002"]
+          : ["POLICY-LOW-RISK-001"];
+
+    risk_rationale =
+      label === "BLOCK"
+        ? "Confirmed ineligibility or verified fraud with no harm/rights flags."
+        : label === "ESCALATE"
+          ? "Human oversight required due to harm/rights risk or incomplete/contradictory evidence."
+          : "Routine case with verified evidence and no harm/rights indicators.";
+  }
+
   const recommended_action =
     label === "BLOCK"
       ? fraudConfirmed || overlapConfirmed
@@ -277,25 +345,11 @@ export function evaluatePolicy(input: PolicyInput): PolicyDecision {
     signal_type.push("other");
   }
 
-  const risk_score =
-    label === "BLOCK"
-      ? Math.min(98, 90 + (fraudConfirmed ? 6 : 0))
-      : label === "ESCALATE"
-        ? 70 + (signal_level === "strong" ? 10 : signal_level === "moderate" ? 6 : signal_level === "weak" ? 3 : 0)
-        : 20;
-
-  const policy_refs =
-    label === "BLOCK"
-      ? ["POLICY-INELIGIBLE-004", "POLICY-FRAUD-005"]
-      : label === "ESCALATE"
-        ? ["POLICY-HARM-RIGHTS-001", "POLICY-OVERSIGHT-002"]
-        : ["POLICY-LOW-RISK-001"];
-
   return {
     decision: label === "ROUTINE" ? "ALLOW" : label === "ESCALATE" ? "NEEDS_HUMAN" : "BLOCK",
     risk_label: label,
     risk_score,
-    risk_rationale: policy_rationale,
+    risk_rationale,
     policy_refs,
     harm_rights_signals: {
       signal_level,

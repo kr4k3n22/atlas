@@ -116,15 +116,25 @@ export async function applyDecision(input: {
 
   const decision = input.decision;
   const note = input.note?.trim() || "";
+  
+  // Phase 4: Handle REQUEST_INFO -> NEEDS_MORE_INFO transition
   const status =
-    decision === "APPROVE" ? "APPROVED" : decision === "REJECT" ? "REJECTED" : "PENDING_REVIEW";
+    decision === "APPROVE" 
+      ? "APPROVED" 
+      : decision === "REJECT" 
+        ? "REJECTED" 
+        : decision === "REQUEST_INFO"
+          ? "NEEDS_MORE_INFO"
+          : "PENDING_REVIEW";
 
   const history = Array.isArray(current.history) ? current.history : [];
   history.push({
     ts: nowIso(),
     actor: "reviewer",
-    event: "decided",
-    detail: `${decision}${note ? `: ${note}` : ""}`,
+    event: decision === "REQUEST_INFO" ? "request_info" : "decided",
+    detail: decision === "REQUEST_INFO" 
+      ? `Requested more information${note ? `: ${note}` : ""}`
+      : `${decision}${note ? `: ${note}` : ""}`,
   });
 
   const { data: updated, error: updateError } = await supabaseAdmin
@@ -138,7 +148,7 @@ export async function applyDecision(input: {
 
   await appendAuditEvent({
     actor: "reviewer",
-    action: `decision_${decision.toLowerCase()}`,
+    action: decision === "REQUEST_INFO" ? "request_info" : `decision_${decision.toLowerCase()}`,
     case_id: updated.id,
     detail: note || undefined,
   });

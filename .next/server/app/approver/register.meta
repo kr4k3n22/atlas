@@ -1,0 +1,16 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/approver/layout,_N_T_/approver/register/layout,_N_T_/approver/register/page,_N_T_/approver/register"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/approver/register/__PAGE__",
+    "/approver/register",
+    "/approver",
+    "/_index",
+    "/_head"
+  ]
+}
