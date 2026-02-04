@@ -29,7 +29,7 @@ export async function POST(request: Request) {
   let caseRecord = null;
 
   if (decision.decision !== "ALLOW") {
-    caseRecord = createCase({
+    caseRecord = await createCase({
       user_display: body.user?.display ?? "Unknown",
       user_message: body.message ?? "No message provided.",
       tool_name: body.tool.name,
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     });
   }
 
-  appendAuditEvent({
+  await appendAuditEvent({
     actor: "policy_engine",
     action: "policy_decision",
     case_id: caseRecord?.id,
