@@ -79,7 +79,7 @@ const PolicyRequest = z.object({
 
 export async function POST(request: Request) {
   const body = PolicyRequest.parse(await request.json());
-  const decision = evaluatePolicy(body);
+  const decision = await evaluatePolicy(body);
 
   let caseRecord = null;
 
