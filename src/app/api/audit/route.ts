@@ -1,5 +1,6 @@
 import { listAuditEvents } from "@/lib/auditStore";
 
 export async function GET() {
-  return Response.json(listAuditEvents());
+  const audit = await listAuditEvents();
+  return Response.json(audit);
 }
