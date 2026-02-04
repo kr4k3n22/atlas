@@ -58,6 +58,7 @@ const FreeTextSchema = z.object({
 });
 
 const PolicyRequest = z.object({
+  claimant_name: z.string().optional(),
   case_id: z.string().optional(),
   timestamp_utc: z.string().optional(),
   jurisdiction: z.string().optional(),
@@ -84,10 +85,11 @@ export async function POST(request: Request) {
 
   if (decision.decision !== "ALLOW") {
     caseRecord = await createCase({
-      user_display: "Claimant",
+      user_display: body.claimant_name ?? "Claimant",
       user_message: body.free_text?.claimant_message ?? "No claimant message provided.",
       tool_name: `benefit_${body.decision_context.decision_type}`,
       tool_args_redacted: {
+        claimant_name: body.claimant_name,
         case_id: body.case_id,
         jurisdiction: body.jurisdiction,
         benefit_type: body.benefit_type,
