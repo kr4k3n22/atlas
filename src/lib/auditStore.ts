@@ -1,43 +1,47 @@
-export type PolicyDecision = {
-  decision: "ALLOW" | "NEEDS_HUMAN" | "BLOCK";
-  risk_label: "ROUTINE" | "ESCALATE" | "BLOCK";
-  risk_score: number;
-  risk_rationale: string;
-  policy_refs: string[];
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
+
+export type AuditEvent = {
+  id: string;
+  ts: string;
+  actor: string;
+  action: string;
+  case_id?: string;
+  detail?: string;
 };
 
-export function evaluatePolicy(input: {
-  tool_name: string;
-  tool_args: Record<string, unknown>;
-  user_message?: string;
-}) : PolicyDecision {
-  const tool = input.tool_name.toLowerCase();
+const AUDIT_PATH = path.join(process.cwd(), "src", "data", "audit_log.json");
 
-  if (tool.includes("terminate") || tool.includes("cancel")) {
-    return {
-      decision: "BLOCK",
-      risk_label: "BLOCK",
-      risk_score: 92,
-      risk_rationale: "High-impact termination request requires verified identity and signed consent.",
-      policy_refs: ["POLICY-HIGH-IMPACT-003"],
-    };
+function loadAudit(): AuditEvent[] {
+  try {
+    const raw = fs.readFileSync(AUDIT_PATH, "utf8");
+    return JSON.parse(raw) as AuditEvent[];
+  } catch {
+    return [];
   }
+}
 
-  if (tool.includes("update") || tool.includes("access") || tool.includes("payment")) {
-    return {
-      decision: "NEEDS_HUMAN",
-      risk_label: "ESCALATE",
-      risk_score: 72,
-      risk_rationale: "Sensitive data access or mutation. Human approval required.",
-      policy_refs: ["POLICY-IDENTITY-002"],
-    };
-  }
+function saveAudit(entries: AuditEvent[]) {
+  fs.writeFileSync(AUDIT_PATH, JSON.stringify(entries, null, 2));
+}
 
-  return {
-    decision: "ALLOW",
-    risk_label: "ROUTINE",
-    risk_score: 20,
-    risk_rationale: "Low-risk action. Auto-approved by policy.",
-    policy_refs: ["POLICY-LOW-RISK-001"],
+export function listAuditEvents(): AuditEvent[] {
+  return loadAudit();
+}
+
+export function appendAuditEvent(input: Omit<AuditEvent, "id" | "ts"> & { id?: string; ts?: string }) {
+  const entries = loadAudit();
+  const entry: AuditEvent = {
+    id: input.id ?? crypto.randomUUID(),
+    ts: input.ts ?? new Date().toISOString(),
+    actor: input.actor,
+    action: input.action,
+    case_id: input.case_id,
+    detail: input.detail,
   };
+
+  entries.unshift(entry);
+  saveAudit(entries);
+  return entry;
 }
