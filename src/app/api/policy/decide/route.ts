@@ -2,6 +2,7 @@ import { z } from "zod";
 import { evaluatePolicy } from "@/lib/policyEngine";
 import { createCase } from "@/lib/caseStore";
 import { appendAuditEvent } from "@/lib/auditStore";
+import { executeAction } from "@/lib/actionExecutionStore";
 
 const PolicyRequest = z.object({
   user: z
@@ -27,6 +28,7 @@ export async function POST(request: Request) {
   });
 
   let caseRecord = null;
+  let execution = null;
 
   if (decision.decision !== "ALLOW") {
     caseRecord = await createCase({
@@ -38,6 +40,13 @@ export async function POST(request: Request) {
       risk_score: decision.risk_score,
       risk_rationale: decision.risk_rationale,
       policy_refs: decision.policy_refs,
+    });
+  } else {
+    execution = await executeAction({
+      tool_name: body.tool.name,
+      tool_args: body.tool.args ?? {},
+      requested_by: body.user?.display ?? null,
+      decision_source: "ALLOW",
     });
   }
 
@@ -51,6 +60,7 @@ export async function POST(request: Request) {
   return Response.json({
     decision: decision.decision,
     case_id: caseRecord?.id ?? null,
+    execution_id: execution?.id ?? null,
     risk_label: decision.risk_label,
     risk_score: decision.risk_score,
     risk_rationale: decision.risk_rationale,
