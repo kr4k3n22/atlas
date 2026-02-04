@@ -4,6 +4,24 @@ This document describes the Supabase tables used by the Atlas HITL (Human-in-the
 
 > **⚠️ IMPORTANT:** When applying these SQL migrations, copy the SQL files from `supabase/migrations/` directory directly. Do NOT manually type SQL from the documentation as it may contain descriptive shorthand notation (like "0-100" in descriptions) which is not valid SQL syntax.
 
+## 📂 Migration Files Location
+
+The SQL migration files are in your repository at:
+
+```
+atlas/
+└── supabase/
+    └── migrations/
+        ├── 001_create_policy_rules_table.sql  (2,047 bytes)
+        ├── 002_seed_policy_rules.sql          (4,083 bytes)
+        └── README.md
+```
+
+**Access Options:**
+- **GitHub Web:** Browse to `supabase/migrations/` in your repo
+- **Local Clone:** `cd atlas/supabase/migrations/`
+- **Absolute Path:** `/home/runner/work/atlas/atlas/supabase/migrations/`
+
 ## Tables Overview
 
 ### 1. `policy_rules` Table

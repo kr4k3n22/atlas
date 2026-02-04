@@ -1,6 +1,21 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## Getting Started
+## 🚀 Quick Start
+
+### Database Setup (Required First!)
+
+This project requires Supabase for database functionality. **Migration files are included in this repository.**
+
+📂 **SQL Migration Files Location:** `supabase/migrations/`
+- `001_create_policy_rules_table.sql` - Creates policy_rules table
+- `002_seed_policy_rules.sql` - Seeds initial policy data
+
+📖 **Setup Guides:**
+- **Quick Start:** See [`QUICK_START.md`](QUICK_START.md) for 3-step database setup
+- **File Locations:** See [`FILE_LOCATIONS.md`](FILE_LOCATIONS.md) if you can't find the SQL files
+- **Schema Details:** See [`SUPABASE_TABLES.md`](SUPABASE_TABLES.md) for complete schema documentation
+
+### Development Server
 
 First, run the development server:
 
@@ -19,6 +34,14 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## 📚 Documentation
+
+- [`QUICK_START.md`](QUICK_START.md) - Fast database setup (start here!)
+- [`FILE_LOCATIONS.md`](FILE_LOCATIONS.md) - Where to find SQL migration files
+- [`SUPABASE_TABLES.md`](SUPABASE_TABLES.md) - Complete database schema documentation
+- [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) - Common issues and solutions
+- [`SQL_CHECK_CONSTRAINT_RESOLUTION.md`](SQL_CHECK_CONSTRAINT_RESOLUTION.md) - SQL syntax help
 
 ## Learn More
 

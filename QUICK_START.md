@@ -1,5 +1,21 @@
 # Quick Start: Applying Supabase Migrations
 
+## 📂 Where Are The Files?
+
+The SQL migration files are located in your repository at:
+
+```
+atlas/
+└── supabase/
+    └── migrations/
+        ├── 001_create_policy_rules_table.sql  ← Table creation
+        ├── 002_seed_policy_rules.sql          ← Seed data
+        └── README.md                          ← Instructions
+```
+
+**On GitHub:** Navigate to `supabase/migrations/` folder in your repository  
+**Locally:** `cd supabase/migrations/`
+
 ## 🚀 Fast Setup (3 Steps)
 
 ### Step 1: Open Supabase SQL Editor
@@ -9,6 +25,7 @@ Log into your Supabase dashboard → SQL Editor
 ```sql
 -- Copy ENTIRE file content from:
 supabase/migrations/001_create_policy_rules_table.sql
+-- (Located in your repository at: ./supabase/migrations/)
 
 -- Paste and execute (Ctrl+Enter)
 -- Expected: "Success. No rows returned"
@@ -18,6 +35,7 @@ supabase/migrations/001_create_policy_rules_table.sql
 ```sql
 -- Copy ENTIRE file content from:
 supabase/migrations/002_seed_policy_rules.sql
+-- (Located in your repository at: ./supabase/migrations/)
 
 -- Paste and execute (Ctrl+Enter)
 -- Expected: "Success. 10 rows inserted"
