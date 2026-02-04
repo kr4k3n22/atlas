@@ -1,8 +1,8 @@
-import fs from "node:fs";
-import path from "node:path";
+import { nanoid } from "nanoid";
 import casesJson from "@/data/mock_cases.json";
 import { CaseSchema } from "@/lib/schema";
 import { appendAuditEvent } from "@/lib/auditStore";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import type { z } from "zod";
 
 type CaseRecord = z.infer<typeof CaseSchema> & {
@@ -13,40 +13,38 @@ type CaseRecord = z.infer<typeof CaseSchema> & {
 type Decision = "APPROVE" | "REJECT" | "REQUEST_INFO";
 
 const nowIso = () => new Date().toISOString();
-const DATA_PATH = path.join(process.cwd(), "src", "data", "approval_queue.json");
 
-function loadCases(): CaseRecord[] {
-  try {
-    const raw = fs.readFileSync(DATA_PATH, "utf8");
-    const parsed = JSON.parse(raw);
-    return parsed.map((c: any) => CaseSchema.parse(c));
-  } catch {
-    return (casesJson as any[]).map((c) => CaseSchema.parse(c));
+function normalizeRow(row: any): CaseRecord {
+  const normalized = {
+    ...row,
+    policy_refs: Array.isArray(row.policy_refs) ? row.policy_refs : [],
+    history: Array.isArray(row.history) ? row.history : [],
+  };
+  return CaseSchema.parse(normalized);
+}
+
+export async function getAllCases(): Promise<CaseRecord[]> {
+  const { data, error } = await supabaseAdmin
+    .from("approval_queue")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
   }
+
+  const rows = (data?.length ? data : casesJson).map(normalizeRow);
+  return rows.map(stripInternal);
 }
 
-function saveCases(cases: CaseRecord[]) {
-  fs.writeFileSync(DATA_PATH, JSON.stringify(cases, null, 2));
+export async function getCaseById(id: string): Promise<CaseRecord | null> {
+  const { data, error } = await supabaseAdmin.from("approval_queue").select("*").eq("id", id).single();
+
+  if (error || !data) return null;
+  return stripInternal(normalizeRow(data));
 }
 
-function nextCaseId(cases: CaseRecord[]) {
-  const nums = cases
-    .map((c) => Number(String(c.id).replace(/[^\d]/g, "")))
-    .filter((n) => !Number.isNaN(n));
-  const next = (nums.length ? Math.max(...nums) : 1000) + 1;
-  return `CASE-${next}`;
-}
-
-export function getAllCases(): CaseRecord[] {
-  return loadCases().map(stripInternal);
-}
-
-export function getCaseById(id: string): CaseRecord | null {
-  const c = loadCases().find((x) => x.id === id);
-  return c ? stripInternal(c) : null;
-}
-
-export function createCase(input: {
+export async function createCase(input: {
   user_display: string;
   user_message: string;
   tool_name: string;
@@ -56,8 +54,7 @@ export function createCase(input: {
   risk_rationale: string;
   policy_refs: string[];
 }) {
-  const cases = loadCases();
-  const id = nextCaseId(cases);
+  const id = `CASE-${nanoid(6).toUpperCase()}`;
   const created_at = nowIso();
 
   const c: CaseRecord = CaseSchema.parse({
@@ -88,53 +85,64 @@ export function createCase(input: {
     ],
   });
 
-  cases.unshift(c);
-  saveCases(cases);
+  const { data, error } = await supabaseAdmin.from("approval_queue").insert(c).select("*").single();
+  if (error) {
+    throw new Error(error.message);
+  }
 
-  appendAuditEvent({
+  await appendAuditEvent({
     actor: "proxy",
     action: "case_created",
     case_id: id,
     detail: `Queued ${input.tool_name} for approval.`,
   });
 
-  return stripInternal(c);
+  return stripInternal(normalizeRow(data));
 }
 
-export function applyDecision(input: { id: string; decision: Decision; note?: string }): CaseRecord | null {
-  const cases = loadCases();
-  const c = cases.find((x) => x.id === input.id);
-  if (!c) return null;
+export async function applyDecision(input: {
+  id: string;
+  decision: Decision;
+  note?: string;
+}): Promise<CaseRecord | null> {
+  const { data: current, error } = await supabaseAdmin
+    .from("approval_queue")
+    .select("*")
+    .eq("id", input.id)
+    .single();
+
+  if (error || !current) return null;
 
   const decision = input.decision;
   const note = input.note?.trim() || "";
+  const status =
+    decision === "APPROVE" ? "APPROVED" : decision === "REJECT" ? "REJECTED" : "PENDING_REVIEW";
 
-  if (decision === "APPROVE") {
-    (c as any).status = "APPROVED";
-  } else if (decision === "REJECT") {
-    (c as any).status = "REJECTED";
-  } else if (decision === "REQUEST_INFO") {
-    (c as any).status = "PENDING_REVIEW";
-  }
-
-  c.history = c.history || [];
-  c.history.push({
+  const history = Array.isArray(current.history) ? current.history : [];
+  history.push({
     ts: nowIso(),
     actor: "reviewer",
     event: "decided",
     detail: `${decision}${note ? `: ${note}` : ""}`,
   });
 
-  saveCases(cases);
+  const { data: updated, error: updateError } = await supabaseAdmin
+    .from("approval_queue")
+    .update({ status, history })
+    .eq("id", input.id)
+    .select("*")
+    .single();
 
-  appendAuditEvent({
+  if (updateError || !updated) return null;
+
+  await appendAuditEvent({
     actor: "reviewer",
     action: `decision_${decision.toLowerCase()}`,
-    case_id: c.id,
+    case_id: updated.id,
     detail: note || undefined,
   });
 
-  return stripInternal(c);
+  return stripInternal(normalizeRow(updated));
 }
 
 function stripInternal(c: CaseRecord): CaseRecord {
