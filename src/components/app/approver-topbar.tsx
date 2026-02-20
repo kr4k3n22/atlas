@@ -13,32 +13,48 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-type Session = {
-  session: null | {
-    id: string;
-    email: string;
-    displayName: string;
-    role: "user" | "approver";
-  };
-};
+import { createClient } from "@/lib/supabaseClient";
 
 export function ApproverTopbar() {
-  const [session, setSession] = React.useState<Session | null>(null);
+  const [displayName, setDisplayName] = React.useState("Approver");
+  const [email, setEmail] = React.useState("");
   const { resolvedTheme } = useTheme();
-
-  React.useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then(setSession)
-      .catch(() => setSession(null));
-  }, []);
-
-  const email = session?.session?.email || "Approver";
   const isDark = (resolvedTheme ?? "dark") === "dark";
 
+  React.useEffect(() => {
+    // Try Supabase Auth first (approver login flow)
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      const user = data?.user;
+      if (user) {
+        const name = user.user_metadata?.displayName || "";
+        const userEmail = user.email || "";
+        setDisplayName(name || userEmail || "Approver");
+        setEmail(userEmail);
+        return;
+      }
+
+      // Fallback: try JWT session (old auth flow)
+      fetch("/api/auth/me")
+        .then((r) => r.json())
+        .then((res) => {
+          if (res?.session) {
+            setDisplayName(res.session.displayName || res.session.email || "Approver");
+            setEmail(res.session.email || "");
+          }
+        })
+        .catch(() => {});
+    });
+  }, []);
+
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
+    // Sign out of Supabase Auth
+    const supabase = createClient();
+    await supabase.auth.signOut();
+
+    // Also clear JWT session cookie
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+
     window.location.href = "/approver/login";
   }
 
@@ -61,17 +77,26 @@ export function ApproverTopbar() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="h-9 px-3 max-w-[320px] truncate">
-                {email}
+                {displayName}
               </Button>
             </DropdownMenuTrigger>
 
             <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuLabel className="truncate">{email}</DropdownMenuLabel>
+              <DropdownMenuLabel className="font-semibold">{displayName}</DropdownMenuLabel>
+              {email && (
+                <DropdownMenuLabel className="truncate text-xs font-normal text-muted-foreground -mt-1">
+                  {email}
+                </DropdownMenuLabel>
+              )}
 
               <DropdownMenuSeparator />
 
               <DropdownMenuItem asChild>
                 <Link href="/cases">Inbox</Link>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem asChild>
+                <Link href="/audit">Audit Log</Link>
               </DropdownMenuItem>
 
               <DropdownMenuItem asChild>
