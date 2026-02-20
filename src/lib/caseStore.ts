@@ -4,6 +4,7 @@ import { CaseSchema } from "@/lib/schema";
 import { appendAuditEvent } from "@/lib/auditStore";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { executeAction } from "@/lib/actionExecutionStore";
+import { notifyGatewayDecision } from "@/lib/gatewayClient";
 import type { z } from "zod";
 
 type CaseRecord = z.infer<typeof CaseSchema> & {
@@ -73,15 +74,15 @@ export async function createCase(input: {
     history: [
       {
         ts: created_at,
-        actor: "proxy",
+        actor: "mcp-gateway",
         event: "created",
-        detail: "Tool call intercepted.",
+        detail: "Tool call intercepted by ATLAS Policy Engine.",
       },
       {
         ts: created_at,
         actor: "risk_engine",
         event: "scored",
-        detail: `${input.risk_label} (${input.risk_score}).`,
+        detail: `${input.risk_label} (${input.risk_score}). ${input.risk_rationale.slice(0, 200)}`,
       },
     ],
   });
@@ -92,10 +93,10 @@ export async function createCase(input: {
   }
 
   await appendAuditEvent({
-    actor: "proxy",
+    actor: "mcp-gateway",
     action: "case_created",
     case_id: id,
-    detail: `Queued ${input.tool_name} for approval.`,
+    detail: `Queued ${input.tool_name} for HITL approval. Risk: ${input.risk_label} (${input.risk_score}).`,
   });
 
   return stripInternal(normalizeRow(data));
@@ -117,7 +118,6 @@ export async function applyDecision(input: {
   const decision = input.decision;
   const note = input.note?.trim() || "";
   
-  // Phase 4: Handle REQUEST_INFO -> NEEDS_MORE_INFO transition
   const status =
     decision === "APPROVE" 
       ? "APPROVED" 
@@ -146,6 +146,7 @@ export async function applyDecision(input: {
 
   if (updateError || !updated) return null;
 
+  // --- Audit log ---
   await appendAuditEvent({
     actor: "reviewer",
     action: decision === "REQUEST_INFO" ? "request_info" : `decision_${decision.toLowerCase()}`,
@@ -153,6 +154,7 @@ export async function applyDecision(input: {
     detail: note || undefined,
   });
 
+  // --- Execute action on APPROVE ---
   if (decision === "APPROVE") {
     await executeAction({
       case_id: updated.id,
@@ -163,6 +165,29 @@ export async function applyDecision(input: {
       decision_source: "APPROVED",
     });
   }
+
+  // --- Notify Gateway (non-blocking) ---
+  // This fires the Inngest event `atlas/sarah.decision` in the Gateway
+  // to resume the paused governance workflow.
+  const gatewayDecision =
+    decision === "APPROVE"
+      ? "APPROVED"
+      : decision === "REJECT"
+        ? "REJECTED"
+        : "NEEDS_INFO";
+
+  notifyGatewayDecision({
+    case_id: updated.id,
+    decision: gatewayDecision,
+    note,
+    approver: "hitl_reviewer",
+  }).then((result) => {
+    if (!result.ok) {
+      console.warn(
+        `[caseStore] Gateway notification failed for ${updated.id}: ${result.error}`
+      );
+    }
+  });
 
   return stripInternal(normalizeRow(updated));
 }
