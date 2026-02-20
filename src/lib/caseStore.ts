@@ -21,6 +21,7 @@ function normalizeRow(row: any): CaseRecord {
     ...row,
     policy_refs: Array.isArray(row.policy_refs) ? row.policy_refs : [],
     history: Array.isArray(row.history) ? row.history : [],
+    signal_types: Array.isArray(row.signal_types) ? row.signal_types : undefined,
   };
   return CaseSchema.parse(normalized);
 }
@@ -203,5 +204,20 @@ function stripInternal(c: CaseRecord): CaseRecord {
     action: e.event,
     detail: e.detail,
   }));
+  // Pass through all new training data fields
+  const passThrough = [
+    "signal_level", "signal_types", "signal_source", "signal_notes",
+    "recommended_action", "policy_rationale",
+    "decision_type", "payment_due_within_days", "case_age_days", "channel",
+    "language_barrier", "digital_access", "disability_accommodation_needed",
+    "fraud_identity_duplicate", "fraud_device_reuse", "fraud_document_tampering",
+    "idv_status", "residency_status", "employment_status", "separation_reason",
+    "employer_report_status", "contributions_status", "income_verification", "overlap_check",
+    "claimant_message", "agent_transcript", "caseworker_note",
+  ] as const;
+  const cRec = c as Record<string, unknown>;
+  for (const key of passThrough) {
+    if (cRec[key] !== undefined) out[key] = cRec[key];
+  }
   return out as CaseRecord;
 }
