@@ -96,6 +96,8 @@ export async function POST(request: Request) {
         decision_context: body.decision_context,
         structured_inputs: body.structured_inputs,
         free_text: body.free_text ?? {},
+        harm_rights_signals: decision.harm_rights_signals,
+        labels: decision.labels,
       },
       risk_label: decision.risk_label,
       risk_score: decision.risk_score,
