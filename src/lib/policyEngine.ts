@@ -11,7 +11,7 @@ export type PolicyDecision = {
   risk_rationale: string;
   policy_refs: string[];
   harm_rights_signals: {
-    signal_level: "none" | "weak" | "moderate" | "strong";
+    signal_level: "none" | "low" | "moderate" | "strong";
     signal_type: Array<
       "housing_risk" | "food_insecurity" | "medical_access" | "safety_risk" | "rights_process_concern" | "other"
     >;
@@ -152,7 +152,6 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
   const employerReportStatus = normalize(structured.employer_report_status ?? structured.last_employer_report);
   const separationReason = normalize(structured.separation_reason_declared ?? structured.reason_for_unemployment);
   const contributionsStatus = normalize(structured.contributions_record_status ?? structured.contributions_record);
-  const earningsStatus = normalize(structured.earnings_record_last_30d ?? structured.recent_earnings_record);
   const incomeVerification = normalize(structured.income_verification);
   const overlapCheck = normalizeOverlap(structured.other_benefits_overlap_check);
   const bankAccess = normalizeBankAccess(structured.bank_data_access);
@@ -316,9 +315,9 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
 
   const signal_level =
     harmSignalPresent !== "none"
-      ? harmSignalPresent
+      ? harmSignalPresent === "weak" ? "low" : harmSignalPresent
       : barrierPresent || appealRequested
-        ? "weak"
+        ? "low"
         : "none";
 
   const notesText = `${freeText.claimant_message ?? ""} ${freeText.caseworker_note ?? ""}`.toLowerCase();

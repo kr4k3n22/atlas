@@ -7,14 +7,90 @@ import { createClient } from "@/lib/supabaseClient";
 
 type RiskLabel = "ROUTINE" | "ESCALATE" | "BLOCK";
 type CaseStatus = "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "NEEDS_INFO" | "CLOSED";
-type QuickFilter = "ALL" | "HIGH_RISK" | "WAITING_24H";
+type QuickFilter = "ALL" | "HIGH_RISK" | "WAITING_24H" | "ARTICLE14";
+type SignalLevel = "none" | "low" | "moderate" | "strong" | "medium" | "high" | "weak";
+type RecommendedAction =
+  | "auto_approve"
+  | "auto_deny"
+  | "auto_review"
+  | "escalate_to_human"
+  | "request_info"
+  | "freeze_payment"
+  | "refer_fraud";
+
+type HarmRightsSignals = {
+  signal_level: SignalLevel;
+  signal_type?: string[];
+  signal_source?: string;
+  notes?: string;
+};
+
+type DecisionContext = {
+  decision_type?: string;
+  payment_due_within_days?: number | null;
+  case_age_days?: number;
+  channel?: string;
+};
+
+type FreeText = {
+  claimant_message?: string;
+  agent_chat_transcript_excerpt?: string;
+  caseworker_note?: string;
+};
+
+type EngagementBarriers = {
+  language_barrier?: string;
+  digital_access?: string;
+  disability_accommodation_needed?: string;
+};
+
+type FraudSignals = {
+  identity_duplicate_match?: string;
+  device_or_address_reuse?: string;
+  document_tampering?: string;
+};
+
+type StructuredInputs = {
+  idv_status?: string;
+  residency_status?: string;
+  employment_status_declared?: string;
+  separation_reason_declared?: string;
+  employer_report_status?: string;
+  contributions_record_status?: string;
+  earnings_record_last_30d?: string;
+  income_verification?: string;
+  other_benefits_overlap_check?: string;
+  bank_data_access?: string;
+  docs_status?: {
+    docs_requested?: string[];
+    docs_received?: string[];
+    docs_quality?: string;
+  };
+  engagement_barriers?: EngagementBarriers;
+  fraud_signals?: FraudSignals;
+};
+
+type CaseLabels = {
+  label?: string;
+  recommended_action?: RecommendedAction;
+  policy_rationale?: string;
+};
+
+type ToolArgs = {
+  decision_context?: DecisionContext;
+  structured_inputs?: StructuredInputs;
+  free_text?: FreeText;
+  harm_rights_signals?: HarmRightsSignals;
+  labels?: CaseLabels;
+  [key: string]: unknown;
+};
 
 type CaseRecord = {
   id: string;
   user_name: string;
   user_message: string;
   tool_name: string;
-  tool_args_redacted: Record<string, unknown>;
+  tool_args_redacted: ToolArgs;
   risk_label: RiskLabel;
   risk_score: number;
   risk_rationale: string;
@@ -43,57 +119,50 @@ function badgeClass(label: string) {
   return "bg-slate-600/60 text-slate-100 border-slate-500/60";
 }
 
-function formatKey(key: string) {
-  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+function normalizeSignalLevel(level?: string): SignalLevel {
+  if (!level) return "none";
+  if (level === "weak") return "low";
+  if (level === "medium" || level === "high") return level as SignalLevel;
+  return level as SignalLevel;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function signalLevelBadge(rawLevel?: string) {
+  const level = normalizeSignalLevel(rawLevel);
+  if (level === "strong" || level === "high")
+    return { cls: "bg-red-600/90 text-white border-red-500/60", label: level };
+  if (level === "moderate" || level === "medium")
+    return { cls: "bg-orange-500/90 text-white border-orange-400/60", label: level };
+  if (level === "low" || level === "weak")
+    return { cls: "bg-yellow-500/90 text-black border-yellow-400/60", label: "low" };
+  return { cls: "bg-slate-600/60 text-slate-100 border-slate-500/60", label: "none" };
 }
 
-function renderInlineValue(value: unknown) {
-  if (value === null || value === undefined) {
-    return <div className="text-xs text-muted-foreground">—</div>;
-  }
-  if (Array.isArray(value)) {
-    return (
-      <ul className="list-disc pl-4 text-sm">
-        {value.map((item, i) => (
-          <li key={`${String(item)}-${i}`} className="break-words">
-            {typeof item === "string" ? item : JSON.stringify(item)}
-          </li>
-        ))}
-      </ul>
-    );
-  }
-  if (isPlainObject(value)) {
-    return (
-      <pre className="mt-1 overflow-auto rounded-md bg-black/30 p-2 text-xs">
-        {JSON.stringify(value, null, 2)}
-      </pre>
-    );
-  }
-  return <div className="text-sm break-words">{String(value)}</div>;
+function recommendedActionBadge(action?: string) {
+  if (!action) return { cls: "bg-slate-600/60 text-slate-100 border-slate-500/60", label: "—" };
+  if (action === "auto_approve")
+    return { cls: "bg-green-600/90 text-white border-green-500/60", label: "✅ Auto-Approve" };
+  if (action === "auto_deny")
+    return { cls: "bg-red-600/90 text-white border-red-500/60", label: "🚫 Auto-Deny" };
+  if (action === "escalate_to_human")
+    return { cls: "bg-orange-500/90 text-white border-orange-400/60", label: "⚠️ Escalate" };
+  if (action === "auto_review" || action === "request_info")
+    return { cls: "bg-blue-600/90 text-white border-blue-500/60", label: "🔄 Auto-Review" };
+  if (action === "refer_fraud")
+    return { cls: "bg-red-700/90 text-white border-red-600/60", label: "🚫 Refer Fraud" };
+  if (action === "freeze_payment")
+    return { cls: "bg-red-800/90 text-white border-red-700/60", label: "🚫 Freeze Payment" };
+  return { cls: "bg-slate-600/60 text-slate-100 border-slate-500/60", label: action };
 }
 
-function renderObjectGrid(obj: Record<string, unknown>) {
-  const entries = Object.entries(obj);
-  if (!entries.length) {
-    return <div className="text-xs text-muted-foreground">—</div>;
-  }
-
-  return (
-    <div className="mt-2 space-y-2">
-      {entries.map(([key, value]) => (
-        <div key={key} className="grid grid-cols-[140px_minmax(0,1fr)] gap-3">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {formatKey(key)}
-          </div>
-          <div>{renderInlineValue(value)}</div>
-        </div>
-      ))}
-    </div>
-  );
+function trafficLight(
+  value: string | undefined,
+  map: Partial<Record<string, "green" | "yellow" | "red">>
+): string {
+  const v = (value ?? "").toLowerCase();
+  const color = map[v] ?? "yellow";
+  if (color === "green") return "text-green-400";
+  if (color === "red") return "text-red-400";
+  return "text-yellow-400";
 }
 
 async function fetchCases(): Promise<CaseRecord[]> {
@@ -117,6 +186,258 @@ async function decideCase(
   return res.json();
 }
 
+// ──────────────────────────────────────────────
+// Sub-panels for the detail view
+// ──────────────────────────────────────────────
+
+function RecommendationBanner({ labels, rationale }: { labels?: CaseLabels; rationale?: string }) {
+  if (!labels?.recommended_action) return null;
+  const { cls, label } = recommendedActionBadge(labels.recommended_action);
+  const dangerActions = new Set<RecommendedAction>(["auto_deny", "refer_fraud", "freeze_payment"]);
+  const bannerBg =
+    labels.recommended_action === "auto_approve"
+      ? "border-green-500/60 bg-green-500/15"
+      : dangerActions.has(labels.recommended_action)
+        ? "border-red-500/60 bg-red-500/15"
+        : labels.recommended_action === "escalate_to_human"
+          ? "border-orange-500/60 bg-orange-500/15"
+          : "border-blue-500/60 bg-blue-500/15";
+
+  return (
+    <div className={cx("rounded-lg border p-3", bannerBg)}>
+      <div className="flex items-center gap-2">
+        <span className={cx("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold", cls)}>
+          {label}
+        </span>
+        <span className="text-xs font-semibold text-muted-foreground">MCP Brain Recommendation</span>
+      </div>
+      {(labels.policy_rationale || rationale) && (
+        <div className="mt-2 text-sm">{labels.policy_rationale || rationale}</div>
+      )}
+    </div>
+  );
+}
+
+function DecisionContextPanel({ ctx }: { ctx?: DecisionContext }) {
+  if (!ctx) return null;
+  const paymentDue = ctx.payment_due_within_days;
+  const paymentUrgent = paymentDue !== null && paymentDue !== undefined && paymentDue <= 7;
+  return (
+    <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
+      <div className="text-xs font-semibold text-muted-foreground">Decision Context</div>
+      <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+        {ctx.decision_type && (
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Type</div>
+            <div className="capitalize">{ctx.decision_type.replace(/_/g, " ")}</div>
+          </div>
+        )}
+        {ctx.channel && (
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Channel</div>
+            <div className="capitalize">{ctx.channel}</div>
+          </div>
+        )}
+        {paymentDue !== undefined && paymentDue !== null && (
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Payment Due</div>
+            <div className={cx("font-medium", paymentUrgent ? "text-red-400" : "")}>
+              {paymentDue} days{paymentUrgent ? " ⚠️" : ""}
+            </div>
+          </div>
+        )}
+        {ctx.case_age_days !== undefined && (
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Case Age</div>
+            <div>{ctx.case_age_days} days</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HarmSignalsPanel({ signals }: { signals?: HarmRightsSignals }) {
+  if (!signals) return null;
+  const { cls, label } = signalLevelBadge(signals.signal_level);
+  return (
+    <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
+      <div className="text-xs font-semibold text-muted-foreground">Harm / Rights Signals</div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className={cx("inline-flex items-center rounded-full border px-2 py-0.5 text-xs", cls)}>
+          {label}
+        </span>
+        {signals.signal_source && (
+          <span className="text-xs text-muted-foreground">Source: {signals.signal_source}</span>
+        )}
+      </div>
+      {signals.signal_type && signals.signal_type.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {signals.signal_type.map((t) => (
+            <span
+              key={t}
+              className="inline-flex items-center rounded border border-muted/60 bg-background/40 px-2 py-0.5 text-[11px]"
+            >
+              {t.replace(/_/g, " ")}
+            </span>
+          ))}
+        </div>
+      )}
+      {signals.notes && (
+        <div className="mt-2 text-sm text-muted-foreground">{signals.notes}</div>
+      )}
+    </div>
+  );
+}
+
+function EngagementBarriersPanel({ barriers }: { barriers?: EngagementBarriers }) {
+  if (!barriers) return null;
+  const items = [
+    {
+      label: "Language Barrier",
+      value: barriers.language_barrier,
+      map: { none: "green" as const, some: "yellow" as const, significant: "red" as const },
+    },
+    {
+      label: "Digital Access",
+      value: barriers.digital_access,
+      map: { good: "green" as const, limited: "yellow" as const, none: "red" as const },
+    },
+    {
+      label: "Disability Accommodation",
+      value: barriers.disability_accommodation_needed,
+      map: { no: "green" as const, unknown: "yellow" as const, yes: "red" as const },
+    },
+  ];
+  return (
+    <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
+      <div className="text-xs font-semibold text-muted-foreground">Engagement Barriers</div>
+      <div className="mt-2 space-y-1">
+        {items.map(({ label, value, map }) => (
+          <div key={label} className="flex items-center gap-2 text-sm">
+            <span className={cx("text-base", trafficLight(value, map))}>●</span>
+            <span className="w-40 text-xs text-muted-foreground">{label}</span>
+            <span className="capitalize">{value ?? "—"}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FraudSignalsPanel({ fraud }: { fraud?: FraudSignals }) {
+  if (!fraud) return null;
+  const items = [
+    { label: "Identity Duplicate Match", value: fraud.identity_duplicate_match },
+    { label: "Device / Address Reuse", value: fraud.device_or_address_reuse },
+    { label: "Document Tampering", value: fraud.document_tampering },
+  ];
+  const colorMap = { none: "green" as const, possible: "yellow" as const, confirmed: "red" as const };
+  return (
+    <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
+      <div className="text-xs font-semibold text-muted-foreground">Fraud Signals</div>
+      <div className="mt-2 space-y-1">
+        {items.map(({ label, value }) => (
+          <div key={label} className="flex items-center gap-2 text-sm">
+            <span className={cx("text-base", trafficLight(value, colorMap))}>●</span>
+            <span className="w-48 text-xs text-muted-foreground">{label}</span>
+            <span className="capitalize">{value ?? "—"}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VerificationStatusPanel({ inputs }: { inputs?: StructuredInputs }) {
+  if (!inputs) return null;
+  const fields: [string, string | undefined][] = [
+    ["IDV Status", inputs.idv_status],
+    ["Residency Status", inputs.residency_status],
+    ["Employment Status", inputs.employment_status_declared],
+    ["Separation Reason", inputs.separation_reason_declared],
+    ["Employer Report", inputs.employer_report_status],
+    ["Contributions Record", inputs.contributions_record_status],
+    ["Income Verification", inputs.income_verification],
+    ["Benefits Overlap Check", inputs.other_benefits_overlap_check],
+    ["Earnings Record (30d)", inputs.earnings_record_last_30d],
+    ["Bank Data Access", inputs.bank_data_access],
+  ];
+  const docs = inputs.docs_status;
+  return (
+    <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
+      <div className="text-xs font-semibold text-muted-foreground">Verification Status</div>
+      <div className="mt-2 grid grid-cols-1 gap-1">
+        {fields.map(([label, value]) =>
+          value ? (
+            <div key={label} className="grid grid-cols-[160px_minmax(0,1fr)] gap-2 text-sm">
+              <div className="text-[11px] text-muted-foreground">{label}</div>
+              <div className="capitalize">{value.replace(/_/g, " ")}</div>
+            </div>
+          ) : null
+        )}
+        {docs && (
+          <>
+            {docs.docs_requested && docs.docs_requested.length > 0 && (
+              <div className="grid grid-cols-[160px_minmax(0,1fr)] gap-2 text-sm">
+                <div className="text-[11px] text-muted-foreground">Docs Requested</div>
+                <div>{docs.docs_requested.join(", ")}</div>
+              </div>
+            )}
+            {docs.docs_received && docs.docs_received.length > 0 && (
+              <div className="grid grid-cols-[160px_minmax(0,1fr)] gap-2 text-sm">
+                <div className="text-[11px] text-muted-foreground">Docs Received</div>
+                <div>{docs.docs_received.join(", ")}</div>
+              </div>
+            )}
+            {docs.docs_quality && (
+              <div className="grid grid-cols-[160px_minmax(0,1fr)] gap-2 text-sm">
+                <div className="text-[11px] text-muted-foreground">Docs Quality</div>
+                <div className="capitalize">{docs.docs_quality.replace(/_/g, " ")}</div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FreeTextPanel({ freeText, userMessage }: { freeText?: FreeText; userMessage?: string }) {
+  const claimant = freeText?.claimant_message || userMessage;
+  const transcript = freeText?.agent_chat_transcript_excerpt;
+  const note = freeText?.caseworker_note;
+  return (
+    <div className="rounded-lg border border-muted/60 bg-background/30 p-3 space-y-3">
+      {claimant && (
+        <div>
+          <div className="text-xs font-semibold text-muted-foreground">Claimant Message</div>
+          <pre className="mt-1 whitespace-pre-wrap text-sm">{claimant}</pre>
+        </div>
+      )}
+      {transcript && (
+        <div>
+          <div className="text-xs font-semibold text-muted-foreground">Agent Chat Transcript</div>
+          <pre className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{transcript}</pre>
+        </div>
+      )}
+      {note && (
+        <div>
+          <div className="text-xs font-semibold text-muted-foreground">Caseworker Note</div>
+          <pre className="mt-1 whitespace-pre-wrap text-sm">{note}</pre>
+        </div>
+      )}
+      {!claimant && !transcript && !note && (
+        <div className="text-sm text-muted-foreground">No free text available.</div>
+      )}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────
+// Main page
+// ──────────────────────────────────────────────
+
 export default function CasesPage() {
   const [all, setAll] = useState<CaseRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,6 +448,8 @@ export default function CasesPage() {
   const [q, setQ] = useState("");
   const [risk, setRisk] = useState<"ALL" | RiskLabel>("ALL");
   const [quick, setQuick] = useState<QuickFilter>("ALL");
+  const [signalFilter, setSignalFilter] = useState<"ALL" | SignalLevel>("ALL");
+  const [actionFilter, setActionFilter] = useState<"ALL" | RecommendedAction>("ALL");
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -138,6 +461,25 @@ export default function CasesPage() {
   const hoursSince = (iso: string) =>
     Math.floor((now - new Date(iso).getTime()) / (1000 * 60 * 60));
 
+  function getCaseSignalLevel(c: CaseRecord): SignalLevel {
+    return normalizeSignalLevel(
+      (c.tool_args_redacted?.harm_rights_signals as HarmRightsSignals | undefined)?.signal_level
+    );
+  }
+
+  function getCaseRecommendedAction(c: CaseRecord): RecommendedAction | undefined {
+    return (c.tool_args_redacted?.labels as CaseLabels | undefined)?.recommended_action;
+  }
+
+  function isArticle14Risk(c: CaseRecord): boolean {
+    const args = c.tool_args_redacted;
+    const label = (args?.labels as CaseLabels | undefined)?.label;
+    const signalLevel = normalizeSignalLevel(
+      (args?.harm_rights_signals as HarmRightsSignals | undefined)?.signal_level
+    );
+    return label === "ARTICLE14_RISK" || (signalLevel !== "none");
+  }
+
   // Auto-detect the logged-in approver from Supabase Auth
   useEffect(() => {
     const supabase = createClient();
@@ -148,13 +490,11 @@ export default function CasesPage() {
       const email = user.email?.toLowerCase() ?? "";
       const displayName = user.user_metadata?.displayName ?? "";
 
-      // Match by email against the approver registry
       const match = APPROVERS.find((a) => a.email.toLowerCase() === email);
       if (match) {
         setApproverSlug(match.slug);
         setApproverName(match.fullName);
       } else if (displayName) {
-        // Not in registry but has a name — use it directly
         setApproverSlug(displayName);
         setApproverName(displayName);
       }
@@ -168,12 +508,11 @@ export default function CasesPage() {
     try {
       const data = await fetchCases();
       setAll(data);
-
       if (selectedId && !data.some((c) => c.id === selectedId)) {
         setSelectedId(null);
       }
-    } catch (e: any) {
-      setErr(e?.message ?? "Unknown error");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -193,7 +532,10 @@ export default function CasesPage() {
   }, [all]);
 
   const metrics = useMemo(() => {
-    const escalated = all.filter((c) => c.risk_label === "ESCALATE" || c.risk_label === "BLOCK").length;
+    const article14 = all.filter(isArticle14Risk).length;
+    const escalateToHuman = all.filter(
+      (c) => getCaseRecommendedAction(c) === "escalate_to_human"
+    ).length;
     const waiting24h = all.filter(
       (c) => c.status === "PENDING_REVIEW" && hoursSince(c.created_at) >= 24
     ).length;
@@ -201,7 +543,8 @@ export default function CasesPage() {
       .filter((c) => c.status === "PENDING_REVIEW")
       .reduce((max, c) => Math.max(max, hoursSince(c.created_at)), 0);
 
-    return { escalated, waiting24h, oldestPending };
+    return { article14, escalateToHuman, waiting24h, oldestPending };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [all, now]);
 
   const filtered = useMemo(() => {
@@ -218,6 +561,17 @@ export default function CasesPage() {
           return false;
         }
         if (quick === "WAITING_24H" && hoursSince(c.created_at) < 24) return false;
+        if (quick === "ARTICLE14" && !isArticle14Risk(c)) return false;
+
+        if (signalFilter !== "ALL") {
+          const sl = getCaseSignalLevel(c);
+          const norm = normalizeSignalLevel(signalFilter);
+          if (sl !== norm) return false;
+        }
+
+        if (actionFilter !== "ALL") {
+          if (getCaseRecommendedAction(c) !== actionFilter) return false;
+        }
 
         if (!needle) return true;
 
@@ -237,7 +591,8 @@ export default function CasesPage() {
         return hay.includes(needle);
       })
       .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-  }, [all, tab, risk, q, quick, now]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, tab, risk, q, quick, signalFilter, actionFilter, now]);
 
   const selected = useMemo(() => {
     if (!selectedId) return null;
@@ -254,8 +609,8 @@ export default function CasesPage() {
       await decideCase(selected.id, decision, note, approverSlug);
       setNote("");
       await refresh();
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to submit decision");
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Failed to submit decision");
     } finally {
       setBusy(false);
     }
@@ -288,18 +643,23 @@ export default function CasesPage() {
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
+        {/* 4-card metrics grid */}
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
           <div className="rounded-xl border border-muted/50 bg-background/40 p-4">
             <div className="text-xs text-muted-foreground">Pending</div>
             <div className="text-2xl font-semibold">{counts.pending}</div>
           </div>
-          <div className="rounded-xl border border-muted/50 bg-background/40 p-4">
-            <div className="text-xs text-muted-foreground">Escalated</div>
-            <div className="text-2xl font-semibold">{metrics.escalated}</div>
+          <div className="rounded-xl border border-orange-500/40 bg-orange-500/10 p-4">
+            <div className="text-xs text-muted-foreground">Article 14 Risk</div>
+            <div className="text-2xl font-semibold text-orange-400">{metrics.article14}</div>
           </div>
-          <div className="rounded-xl border border-muted/50 bg-background/40 p-4">
+          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
+            <div className="text-xs text-muted-foreground">Escalate to Human</div>
+            <div className="text-2xl font-semibold text-amber-400">{metrics.escalateToHuman}</div>
+          </div>
+          <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4">
             <div className="text-xs text-muted-foreground">SLA 24h breach</div>
-            <div className="text-2xl font-semibold">{metrics.waiting24h}</div>
+            <div className="text-2xl font-semibold text-rose-400">{metrics.waiting24h}</div>
             <div className="text-xs text-muted-foreground mt-1">
               Oldest pending: {metrics.oldestPending}h
             </div>
@@ -312,7 +672,9 @@ export default function CasesPage() {
           </div>
         ) : null}
 
+        {/* Toolbar */}
         <div className="mt-5 flex flex-wrap items-center gap-2">
+          {/* Status tabs */}
           <div className="inline-flex rounded-md border border-muted/60 bg-background/40 p-1 backdrop-blur">
             <button
               className={cx("h-8 rounded px-3 text-sm", tab === "PENDING" && "bg-foreground text-background")}
@@ -340,6 +702,7 @@ export default function CasesPage() {
             </button>
           </div>
 
+          {/* Quick filters */}
           <div className="inline-flex items-center gap-2">
             <button
               className={cx(
@@ -359,18 +722,29 @@ export default function CasesPage() {
             >
               Waiting &gt; 24h
             </button>
+            <button
+              className={cx(
+                "h-8 rounded-full border px-3 text-xs",
+                quick === "ARTICLE14" ? "border-orange-400/60 bg-orange-400/15" : "border-muted/60 bg-background/40"
+              )}
+              onClick={() => setQuick(quick === "ARTICLE14" ? "ALL" : "ARTICLE14")}
+            >
+              Article 14 Risk
+            </button>
           </div>
 
+          {/* Search */}
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search id, user, tool, text, policy refs..."
-            className="h-9 w-full max-w-md rounded-md border border-muted/60 bg-background/40 px-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-foreground/30"
+            className="h-9 w-full max-w-xs rounded-md border border-muted/60 bg-background/40 px-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-foreground/30"
           />
 
+          {/* Risk filter */}
           <select
             value={risk}
-            onChange={(e) => setRisk(e.target.value as any)}
+            onChange={(e) => setRisk(e.target.value as "ALL" | RiskLabel)}
             className="h-9 rounded-md border border-muted/60 bg-background/40 px-3 text-sm shadow-sm outline-none"
           >
             <option value="ALL">All risk</option>
@@ -378,39 +752,70 @@ export default function CasesPage() {
             <option value="ESCALATE">Escalate</option>
             <option value="BLOCK">Block</option>
           </select>
+
+          {/* Signal level filter */}
+          <select
+            value={signalFilter}
+            onChange={(e) => setSignalFilter(e.target.value as "ALL" | SignalLevel)}
+            className="h-9 rounded-md border border-muted/60 bg-background/40 px-3 text-sm shadow-sm outline-none"
+          >
+            <option value="ALL">All signals</option>
+            <option value="none">None</option>
+            <option value="low">Low</option>
+            <option value="moderate">Moderate</option>
+            <option value="strong">Strong</option>
+          </select>
+
+          {/* Recommended action filter */}
+          <select
+            value={actionFilter}
+            onChange={(e) => setActionFilter(e.target.value as "ALL" | RecommendedAction)}
+            className="h-9 rounded-md border border-muted/60 bg-background/40 px-3 text-sm shadow-sm outline-none"
+          >
+            <option value="ALL">All actions</option>
+            <option value="auto_approve">Auto-Approve</option>
+            <option value="auto_deny">Auto-Deny</option>
+            <option value="auto_review">Auto-Review</option>
+            <option value="escalate_to_human">Escalate to Human</option>
+          </select>
         </div>
 
+        {/* Main grid: table + detail */}
         <div className="mt-6 grid flex-1 min-h-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,520px)] items-start">
+          {/* Cases table */}
           <div className="rounded-xl border border-muted/60 bg-background/40 backdrop-blur flex min-h-0 flex-col min-w-0 h-[calc(100vh-320px)]">
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
               <table className="w-full table-fixed text-sm">
                 <thead className="border-b border-muted/60 text-muted-foreground">
                   <tr>
-                    <th className="px-3 py-3 text-left font-medium w-[120px]">Status</th>
-                    <th className="px-3 py-3 text-left font-medium w-[120px]">Risk</th>
-                    <th className="px-3 py-3 text-left font-medium hidden md:table-cell w-[180px]">Created</th>
-                    <th className="px-3 py-3 text-left font-medium hidden lg:table-cell w-[140px]">User</th>
-                    <th className="px-3 py-3 text-left font-medium w-[180px]">Tool</th>
+                    <th className="px-3 py-3 text-left font-medium w-[110px]">Status</th>
+                    <th className="px-3 py-3 text-left font-medium w-[110px]">Risk</th>
+                    <th className="px-3 py-3 text-left font-medium w-[130px]">Action</th>
+                    <th className="px-3 py-3 text-left font-medium w-[90px]">Signal</th>
+                    <th className="px-3 py-3 text-left font-medium hidden md:table-cell w-[160px]">Created</th>
+                    <th className="px-3 py-3 text-left font-medium hidden lg:table-cell w-[120px]">User</th>
                     <th className="px-3 py-3 text-left font-medium">Message</th>
-                    <th className="px-3 py-3 text-right font-medium w-[150px]">Actions</th>
+                    <th className="px-3 py-3 text-right font-medium w-[100px]">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td className="px-3 py-6 text-muted-foreground" colSpan={7}>
+                      <td className="px-3 py-6 text-muted-foreground" colSpan={8}>
                         Loading...
                       </td>
                     </tr>
                   ) : filtered.length === 0 ? (
                     <tr>
-                      <td className="px-3 py-6 text-muted-foreground" colSpan={7}>
+                      <td className="px-3 py-6 text-muted-foreground" colSpan={8}>
                         No cases match your filters.
                       </td>
                     </tr>
                   ) : (
                     filtered.map((c) => {
                       const active = c.id === selectedId;
+                      const actionInfo = recommendedActionBadge(getCaseRecommendedAction(c));
+                      const signalInfo = signalLevelBadge(getCaseSignalLevel(c));
                       return (
                         <tr
                           key={c.id}
@@ -440,11 +845,30 @@ export default function CasesPage() {
                               {c.risk_label} ({Math.round(c.risk_score)})
                             </span>
                           </td>
+                          <td className="px-3 py-3 align-top">
+                            <span
+                              className={cx(
+                                "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
+                                actionInfo.cls
+                              )}
+                            >
+                              {actionInfo.label}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 align-top">
+                            <span
+                              className={cx(
+                                "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
+                                signalInfo.cls
+                              )}
+                            >
+                              {signalInfo.label}
+                            </span>
+                          </td>
                           <td className="px-3 py-3 text-muted-foreground align-top hidden md:table-cell">
                             {new Date(c.created_at).toLocaleString()}
                           </td>
                           <td className="px-3 py-3 align-top hidden lg:table-cell">{c.user_name}</td>
-                          <td className="px-3 py-3 align-top break-words">{c.tool_name}</td>
                           <td className="px-3 py-3 text-muted-foreground align-top whitespace-normal break-words">
                             {c.user_message}
                           </td>
@@ -470,6 +894,7 @@ export default function CasesPage() {
             </div>
           </div>
 
+          {/* Detail panel */}
           <div className="rounded-xl border border-muted/60 bg-background/40 p-4 backdrop-blur h-[calc(100vh-320px)] min-w-0 flex flex-col">
             {selected ? (
               <>
@@ -501,35 +926,57 @@ export default function CasesPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
-                  <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
-                    <div className="text-xs font-semibold text-muted-foreground">User message</div>
-                    <pre className="mt-2 whitespace-pre-wrap text-sm">{selected.user_message}</pre>
-                  </div>
+                <div className="mt-4 flex-1 min-h-0 overflow-y-auto space-y-3 pr-1">
+                  {/* 1. MCP Brain Recommendation Banner */}
+                  <RecommendationBanner
+                    labels={selected.tool_args_redacted?.labels as CaseLabels | undefined}
+                    rationale={selected.risk_rationale}
+                  />
 
+                  {/* 2. Decision Context */}
+                  <DecisionContextPanel
+                    ctx={selected.tool_args_redacted?.decision_context as DecisionContext | undefined}
+                  />
+
+                  {/* 3. Harm / Rights Signals */}
+                  <HarmSignalsPanel
+                    signals={selected.tool_args_redacted?.harm_rights_signals as HarmRightsSignals | undefined}
+                  />
+
+                  {/* 4. Engagement Barriers */}
+                  <EngagementBarriersPanel
+                    barriers={
+                      (selected.tool_args_redacted?.structured_inputs as StructuredInputs | undefined)
+                        ?.engagement_barriers
+                    }
+                  />
+
+                  {/* 5. Fraud Signals */}
+                  <FraudSignalsPanel
+                    fraud={
+                      (selected.tool_args_redacted?.structured_inputs as StructuredInputs | undefined)
+                        ?.fraud_signals
+                    }
+                  />
+
+                  {/* 6. Verification Status */}
+                  <VerificationStatusPanel
+                    inputs={selected.tool_args_redacted?.structured_inputs as StructuredInputs | undefined}
+                  />
+
+                  {/* 7. Free text split into 3 sections */}
+                  <FreeTextPanel
+                    freeText={selected.tool_args_redacted?.free_text as FreeText | undefined}
+                    userMessage={selected.user_message}
+                  />
+
+                  {/* Risk rationale */}
                   <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
                     <div className="text-xs font-semibold text-muted-foreground">Risk rationale</div>
                     <pre className="mt-2 whitespace-pre-wrap text-sm">{selected.risk_rationale}</pre>
                   </div>
 
-                  <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
-                    <div className="text-xs font-semibold text-muted-foreground">Tool args (redacted)</div>
-                    {Object.keys(selected.tool_args_redacted ?? {}).length ? (
-                      <div className="mt-2 grid gap-3">
-                        {Object.entries(selected.tool_args_redacted ?? {}).map(([key, value]) => (
-                          <div key={key} className="rounded-lg border border-muted/40 bg-background/40 p-3">
-                            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                              {formatKey(key)}
-                            </div>
-                            {isPlainObject(value) ? renderObjectGrid(value) : <div className="mt-2">{renderInlineValue(value)}</div>}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="mt-2 text-sm text-muted-foreground">None</div>
-                    )}
-                  </div>
-
+                  {/* Policy refs */}
                   <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
                     <div className="text-xs font-semibold text-muted-foreground">Policy refs</div>
                     {selected.policy_refs?.length ? (
@@ -545,6 +992,7 @@ export default function CasesPage() {
                     )}
                   </div>
 
+                  {/* Audit trail */}
                   <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
                     <div className="text-xs font-semibold text-muted-foreground">Audit trail</div>
                     {selected.audit_trail?.length ? (
@@ -565,10 +1013,10 @@ export default function CasesPage() {
                     )}
                   </div>
 
+                  {/* Decision panel */}
                   <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
                     <div className="text-xs font-semibold text-muted-foreground">Decision</div>
 
-                    {/* Auto-detected approver identity */}
                     {approverName ? (
                       <div className="mt-3 rounded-md border border-muted/40 bg-background/40 px-3 py-2 text-xs">
                         Deciding as: <strong className="text-foreground">{approverName}</strong>
@@ -579,7 +1027,6 @@ export default function CasesPage() {
                       </div>
                     )}
 
-                    {/* Required note */}
                     <textarea
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
