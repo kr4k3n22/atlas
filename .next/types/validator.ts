@@ -227,6 +227,24 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../src/app/api/gateway/health/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/gateway/health">> = Specific
+  const handler = {} as typeof import("../../src/app/api/gateway/health/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../src/app/api/gateway/ingest/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/gateway/ingest">> = Specific
+  const handler = {} as typeof import("../../src/app/api/gateway/ingest/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../src/app/api/policy/decide/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/policy/decide">> = Specific

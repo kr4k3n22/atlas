@@ -10,6 +10,8 @@
   "/api/cases/[id]/route": "/api/cases/[id]",
   "/api/cases/check-sla/route": "/api/cases/check-sla",
   "/api/cases/route": "/api/cases",
+  "/api/gateway/health/route": "/api/gateway/health",
+  "/api/gateway/ingest/route": "/api/gateway/ingest",
   "/api/policy/decide/route": "/api/policy/decide",
   "/approver/login/page": "/approver/login",
   "/approver/register/page": "/approver/register",

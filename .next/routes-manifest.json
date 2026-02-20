@@ -106,6 +106,18 @@
       "namedRegex": "^/api/cases/check\\-sla(?:/)?$"
     },
     {
+      "page": "/api/gateway/health",
+      "regex": "^/api/gateway/health(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/gateway/health(?:/)?$"
+    },
+    {
+      "page": "/api/gateway/ingest",
+      "regex": "^/api/gateway/ingest(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/gateway/ingest(?:/)?$"
+    },
+    {
       "page": "/api/policy/decide",
       "regex": "^/api/policy/decide(?:/)?$",
       "routeKeys": {},

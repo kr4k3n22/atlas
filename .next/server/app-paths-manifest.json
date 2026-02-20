@@ -10,6 +10,8 @@
   "/api/cases/[id]/route": "app/api/cases/[id]/route.js",
   "/api/cases/check-sla/route": "app/api/cases/check-sla/route.js",
   "/api/cases/route": "app/api/cases/route.js",
+  "/api/gateway/health/route": "app/api/gateway/health/route.js",
+  "/api/gateway/ingest/route": "app/api/gateway/ingest/route.js",
   "/api/policy/decide/route": "app/api/policy/decide/route.js",
   "/approver/login/page": "app/approver/login/page.js",
   "/approver/register/page": "app/approver/register/page.js",
