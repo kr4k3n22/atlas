@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ThemeInit from "@/app/_components/ThemeInit";
+import { APPROVERS } from "@/lib/approvers";
 
 type RiskLabel = "ROUTINE" | "ESCALATE" | "BLOCK";
 type CaseStatus = "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "NEEDS_INFO" | "CLOSED";
@@ -103,14 +104,15 @@ async function fetchCases(): Promise<CaseRecord[]> {
 async function decideCase(
   id: string,
   decision: "APPROVE" | "REJECT" | "REQUEST_INFO",
-  note: string
+  note: string,
+  approver: string
 ) {
   const res = await fetch(`/api/cases/${encodeURIComponent(id)}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ decision, note }),
+    body: JSON.stringify({ decision, note, approver }),
   });
-  if (!res.ok) throw new Error("Failed to submit decision");
+  if (!res.ok) throw new Error(await res.text().catch(() => "Failed to submit decision"));
   return res.json();
 }
 
@@ -127,6 +129,7 @@ export default function CasesPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [note, setNote] = useState("");
+  const [approver, setApprover] = useState("");
   const [busy, setBusy] = useState(false);
 
   const now = Date.now();
@@ -216,13 +219,16 @@ export default function CasesPage() {
     return all.find((c) => c.id === selectedId) ?? null;
   }, [all, selectedId]);
 
+  const canDecide = note.trim().length > 0 && approver !== "";
+
   async function onDecision(decision: "APPROVE" | "REJECT" | "REQUEST_INFO") {
-    if (!selected) return;
+    if (!selected || !canDecide) return;
     setBusy(true);
     setErr(null);
     try {
-      await decideCase(selected.id, decision, note);
+      await decideCase(selected.id, decision, note, approver);
       setNote("");
+      setApprover("");
       await refresh();
     } catch (e: any) {
       setErr(e?.message ?? "Failed to submit decision");
@@ -427,47 +433,7 @@ export default function CasesPage() {
                                   setSelectedId(c.id);
                                 }}
                               >
-                                Open
-                              </button>
-                              <button
-                                className="h-7 rounded-md border border-green-500/60 bg-green-500/15 px-2 text-xs hover:bg-green-500/25"
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  setSelectedId(c.id);
-                                  setBusy(true);
-                                  setErr(null);
-                                  try {
-                                    await decideCase(c.id, "APPROVE", "");
-                                    await refresh();
-                                  } catch (err: any) {
-                                    setErr(err?.message ?? "Failed to submit decision");
-                                  } finally {
-                                    setBusy(false);
-                                  }
-                                }}
-                                disabled={busy}
-                              >
-                                Approve
-                              </button>
-                              <button
-                                className="h-7 rounded-md border border-red-500/60 bg-red-500/15 px-2 text-xs hover:bg-red-500/25"
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  setSelectedId(c.id);
-                                  setBusy(true);
-                                  setErr(null);
-                                  try {
-                                    await decideCase(c.id, "REJECT", "");
-                                    await refresh();
-                                  } catch (err: any) {
-                                    setErr(err?.message ?? "Failed to submit decision");
-                                  } finally {
-                                    setBusy(false);
-                                  }
-                                }}
-                                disabled={busy}
-                              >
-                                Reject
+                                Review
                               </button>
                             </div>
                           </td>
@@ -577,6 +543,20 @@ export default function CasesPage() {
 
                   <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
                     <div className="text-xs font-semibold text-muted-foreground">Decision note</div>
+
+                    <select
+                      value={approver}
+                      onChange={(e) => setApprover(e.target.value)}
+                      className="mt-2 h-9 w-full rounded-md border border-muted/60 bg-background/40 px-3 text-sm outline-none focus:ring-2 focus:ring-foreground/30"
+                    >
+                      <option value="">— Select reviewer —</option>
+                      {APPROVERS.map((a) => (
+                        <option key={a.slug} value={a.slug}>
+                          {a.fullName} — {a.role}
+                        </option>
+                      ))}
+                    </select>
+
                     <textarea
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
@@ -584,36 +564,42 @@ export default function CasesPage() {
                       className="mt-2 h-24 w-full resize-y rounded-md border border-muted/60 bg-background/40 p-2 text-sm outline-none focus:ring-2 focus:ring-foreground/30"
                     />
 
+                    {!canDecide && (
+                      <div className="mt-2 rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-300">
+                        Select a reviewer and enter a note before making a decision.
+                      </div>
+                    )}
+
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button
-                        disabled={busy}
+                        disabled={busy || !canDecide}
                         onClick={() => onDecision("APPROVE")}
                         className={cx(
                           "h-9 rounded-md border px-3 text-sm shadow-sm",
                           "border-green-500/60 bg-green-500/20 hover:bg-green-500/30",
-                          busy && "opacity-50"
+                          (busy || !canDecide) && "opacity-50 cursor-not-allowed"
                         )}
                       >
                         Approve
                       </button>
                       <button
-                        disabled={busy}
+                        disabled={busy || !canDecide}
                         onClick={() => onDecision("REJECT")}
                         className={cx(
                           "h-9 rounded-md border px-3 text-sm shadow-sm",
                           "border-red-500/60 bg-red-500/20 hover:bg-red-500/30",
-                          busy && "opacity-50"
+                          (busy || !canDecide) && "opacity-50 cursor-not-allowed"
                         )}
                       >
                         Reject
                       </button>
                       <button
-                        disabled={busy}
+                        disabled={busy || !canDecide}
                         onClick={() => onDecision("REQUEST_INFO")}
                         className={cx(
                           "h-9 rounded-md border px-3 text-sm shadow-sm",
                           "border-yellow-500/60 bg-yellow-500/20 hover:bg-yellow-500/30",
-                          busy && "opacity-50"
+                          (busy || !canDecide) && "opacity-50 cursor-not-allowed"
                         )}
                       >
                         Request info
