@@ -19,11 +19,20 @@ function cx(...parts: Array<string | false | null | undefined>) {
 }
 
 function actorBadge(actor: string) {
-  if (actor === "mcp-gateway") return "bg-blue-500/20 text-blue-300 border-blue-500/40";
-  if (actor === "risk_engine") return "bg-purple-500/20 text-purple-300 border-purple-500/40";
-  if (actor === "reviewer") return "bg-green-500/20 text-green-300 border-green-500/40";
-  if (actor === "system") return "bg-slate-500/20 text-slate-300 border-slate-500/40";
-  return "bg-slate-600/20 text-slate-300 border-slate-500/40";
+  const lower = actor.toLowerCase();
+  if (lower === "mcp-gateway" || lower === "mcp gateway") return "bg-blue-500/20 text-blue-300 border-blue-500/40";
+  if (lower === "risk_engine" || lower === "risk engine") return "bg-purple-500/20 text-purple-300 border-purple-500/40";
+  if (lower === "system") return "bg-slate-500/20 text-slate-300 border-slate-500/40";
+  return "bg-green-500/20 text-green-300 border-green-500/40";
+}
+
+function displayActor(actor: string): string {
+  const lower = actor.toLowerCase();
+  if (lower === "mcp-gateway" || lower === "mcp gateway") return "MCP Gateway";
+  if (lower === "risk_engine" || lower === "risk engine") return "Risk Engine";
+  if (lower === "system") return "System";
+  if (lower === "reviewer") return "Reviewer";
+  return actor;
 }
 
 function actionBadge(action: string) {
@@ -48,7 +57,7 @@ function toCSV(events: AuditEvent[]): string {
   const header = "Timestamp,Actor,Action,Case ID,Detail";
   const rows = events.map((e) => {
     const detail = (e.detail ?? "").replace(/"/g, '""');
-    return `"${e.ts}","${e.actor}","${e.action}","${e.case_id ?? ""}","${detail}"`;
+    return `"${e.ts}","${displayActor(e.actor)}","${e.action}","${e.case_id ?? ""}","${detail}"`;
   });
   return [header, ...rows].join("\n");
 }
@@ -147,9 +156,6 @@ export default function AuditPage() {
             <div className="text-2xl font-semibold tracking-tight">
               Immutable Audit Log
             </div>
-            <div className="text-sm text-muted-foreground">
-              NIST AI RMF compliance trail — read-only, append-only.
-            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -168,8 +174,12 @@ export default function AuditPage() {
           </div>
         </div>
 
+        <div className="mt-2 text-sm text-muted-foreground">
+          NIST AI RMF compliance trail — read-only, append-only.
+        </div>
+
         {/* Metrics */}
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <div className="mt-5 grid gap-3 md:grid-cols-4">
           <div className="rounded-xl border border-muted/50 bg-background/40 p-4">
             <div className="text-xs text-muted-foreground">Total Events</div>
             <div className="text-2xl font-semibold">{counts.total}</div>
@@ -182,7 +192,7 @@ export default function AuditPage() {
                 key={actor}
                 className="rounded-xl border border-muted/50 bg-background/40 p-4"
               >
-                <div className="text-xs text-muted-foreground">{actor}</div>
+                <div className="text-xs text-muted-foreground">{displayActor(actor)}</div>
                 <div className="text-2xl font-semibold">{count}</div>
               </div>
             ))}
@@ -195,7 +205,7 @@ export default function AuditPage() {
         )}
 
         {/* Filters */}
-        <div className="mt-5 flex flex-wrap items-center gap-2">
+        <div className="mt-6 flex flex-wrap items-center gap-2">
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -211,7 +221,7 @@ export default function AuditPage() {
             <option value="ALL">All actors</option>
             {actors.map((a) => (
               <option key={a} value={a}>
-                {a}
+                {displayActor(a)}
               </option>
             ))}
           </select>
@@ -260,12 +270,12 @@ export default function AuditPage() {
           </div>
         </div>
 
-        <div className="mt-1 text-xs text-muted-foreground">
+        <div className="mt-3 text-xs text-muted-foreground">
           Showing {filtered.length} of {all.length} events
         </div>
 
         {/* Audit Table */}
-        <div className="mt-4 rounded-xl border border-muted/60 bg-background/40 backdrop-blur flex min-h-0 flex-col min-w-0 h-[calc(100vh-340px)]">
+        <div className="mt-4 rounded-xl border border-muted/60 bg-background/40 backdrop-blur flex min-h-0 flex-col min-w-0 h-[calc(100vh-420px)]">
           <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
             <table className="w-full table-fixed text-sm">
               <thead className="border-b border-muted/60 text-muted-foreground sticky top-0 bg-background/80 backdrop-blur z-10">
@@ -320,7 +330,7 @@ export default function AuditPage() {
                             actorBadge(e.actor)
                           )}
                         >
-                          {e.actor}
+                          {displayActor(e.actor)}
                         </span>
                       </td>
                       <td className="px-3 py-3 align-top">

@@ -1,3 +1,8 @@
+// NOTE: For NIST AI RMF compliance, the audit_log table must be immutable.
+// Run the following SQL in the Supabase SQL Editor to revoke UPDATE/DELETE:
+//   REVOKE UPDATE, DELETE ON audit_log FROM anon;
+//   REVOKE UPDATE, DELETE ON audit_log FROM authenticated;
+//   REVOKE UPDATE, DELETE ON audit_log FROM service_role;
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export type AuditEvent = {

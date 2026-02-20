@@ -74,13 +74,13 @@ export async function createCase(input: {
     history: [
       {
         ts: created_at,
-        actor: "mcp-gateway",
+        actor: "MCP Gateway",
         event: "created",
         detail: "Tool call intercepted by ATLAS Policy Engine.",
       },
       {
         ts: created_at,
-        actor: "risk_engine",
+        actor: "Risk Engine",
         event: "scored",
         detail: `${input.risk_label} (${input.risk_score}). ${input.risk_rationale.slice(0, 200)}`,
       },
@@ -93,7 +93,7 @@ export async function createCase(input: {
   }
 
   await appendAuditEvent({
-    actor: "mcp-gateway",
+    actor: "MCP Gateway",
     action: "case_created",
     case_id: id,
     detail: `Queued ${input.tool_name} for HITL approval. Risk: ${input.risk_label} (${input.risk_score}).`,
@@ -106,6 +106,7 @@ export async function applyDecision(input: {
   id: string;
   decision: Decision;
   note?: string;
+  approver?: string;
 }): Promise<CaseRecord | null> {
   const { data: current, error } = await supabaseAdmin
     .from("approval_queue")
@@ -117,6 +118,7 @@ export async function applyDecision(input: {
 
   const decision = input.decision;
   const note = input.note?.trim() || "";
+  const approver = input.approver?.trim() || "Reviewer";
   
   const status =
     decision === "APPROVE" 
@@ -130,7 +132,7 @@ export async function applyDecision(input: {
   const history = Array.isArray(current.history) ? current.history : [];
   history.push({
     ts: nowIso(),
-    actor: "reviewer",
+    actor: approver,
     event: decision === "REQUEST_INFO" ? "request_info" : "decided",
     detail: decision === "REQUEST_INFO" 
       ? `Requested more information${note ? `: ${note}` : ""}`
@@ -148,7 +150,7 @@ export async function applyDecision(input: {
 
   // --- Audit log ---
   await appendAuditEvent({
-    actor: "reviewer",
+    actor: approver,
     action: decision === "REQUEST_INFO" ? "request_info" : `decision_${decision.toLowerCase()}`,
     case_id: updated.id,
     detail: note || undefined,
@@ -159,7 +161,7 @@ export async function applyDecision(input: {
     await executeAction({
       case_id: updated.id,
       requested_by: updated.user_display ?? null,
-      approver: "reviewer",
+      approver,
       tool_name: updated.tool_name,
       tool_args: updated.tool_args_redacted ?? {},
       decision_source: "APPROVED",
@@ -180,7 +182,7 @@ export async function applyDecision(input: {
     case_id: updated.id,
     decision: gatewayDecision,
     note,
-    approver: "hitl_reviewer",
+    approver,
   }).then((result) => {
     if (!result.ok) {
       console.warn(
