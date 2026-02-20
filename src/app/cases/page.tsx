@@ -243,6 +243,12 @@ export default function CasesPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <a
+              href="/audit"
+              className="h-9 rounded-md border border-muted/60 bg-background/40 px-3 text-sm shadow-sm backdrop-blur hover:bg-background/60 flex items-center"
+            >
+              Audit Log
+            </a>
             <button
               onClick={() => void refresh()}
               className="h-9 rounded-md border border-muted/60 bg-background/40 px-3 text-sm shadow-sm backdrop-blur hover:bg-background/60"
