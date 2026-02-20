@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import ThemeInit from "@/app/_components/ThemeInit";
 import { APPROVERS } from "@/lib/approvers";
+import { createClient } from "@/lib/supabaseClient";
 
 type RiskLabel = "ROUTINE" | "ESCALATE" | "BLOCK";
 type CaseStatus = "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "NEEDS_INFO" | "CLOSED";
@@ -129,12 +130,36 @@ export default function CasesPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [approver, setApprover] = useState("");
+  const [approverSlug, setApproverSlug] = useState("");
+  const [approverName, setApproverName] = useState("");
   const [busy, setBusy] = useState(false);
 
   const now = Date.now();
   const hoursSince = (iso: string) =>
     Math.floor((now - new Date(iso).getTime()) / (1000 * 60 * 60));
+
+  // Auto-detect the logged-in approver from Supabase Auth
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      const user = data?.user;
+      if (!user) return;
+
+      const email = user.email?.toLowerCase() ?? "";
+      const displayName = user.user_metadata?.displayName ?? "";
+
+      // Match by email against the approver registry
+      const match = APPROVERS.find((a) => a.email.toLowerCase() === email);
+      if (match) {
+        setApproverSlug(match.slug);
+        setApproverName(match.fullName);
+      } else if (displayName) {
+        // Not in registry but has a name — use it directly
+        setApproverSlug(displayName);
+        setApproverName(displayName);
+      }
+    });
+  }, []);
 
   async function refresh() {
     setLoading(true);
@@ -219,16 +244,15 @@ export default function CasesPage() {
     return all.find((c) => c.id === selectedId) ?? null;
   }, [all, selectedId]);
 
-  const canDecide = note.trim().length > 0 && approver !== "";
+  const canDecide = note.trim().length > 0 && approverSlug !== "";
 
   async function onDecision(decision: "APPROVE" | "REJECT" | "REQUEST_INFO") {
     if (!selected || !canDecide) return;
     setBusy(true);
     setErr(null);
     try {
-      await decideCase(selected.id, decision, note, approver);
+      await decideCase(selected.id, decision, note, approverSlug);
       setNote("");
-      setApprover("");
       await refresh();
     } catch (e: any) {
       setErr(e?.message ?? "Failed to submit decision");
@@ -542,31 +566,30 @@ export default function CasesPage() {
                   </div>
 
                   <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
-                    <div className="text-xs font-semibold text-muted-foreground">Decision note</div>
+                    <div className="text-xs font-semibold text-muted-foreground">Decision</div>
 
-                    <select
-                      value={approver}
-                      onChange={(e) => setApprover(e.target.value)}
-                      className="mt-2 h-9 w-full rounded-md border border-muted/60 bg-background/40 px-3 text-sm outline-none focus:ring-2 focus:ring-foreground/30"
-                    >
-                      <option value="">— Select reviewer —</option>
-                      {APPROVERS.map((a) => (
-                        <option key={a.slug} value={a.slug}>
-                          {a.fullName} — {a.role}
-                        </option>
-                      ))}
-                    </select>
+                    {/* Auto-detected approver identity */}
+                    {approverName ? (
+                      <div className="mt-3 rounded-md border border-muted/40 bg-background/40 px-3 py-2 text-xs">
+                        Deciding as: <strong className="text-foreground">{approverName}</strong>
+                      </div>
+                    ) : (
+                      <div className="mt-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+                        Unable to identify your approver account. Log out and back in.
+                      </div>
+                    )}
 
+                    {/* Required note */}
                     <textarea
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
-                      placeholder="Reasoning, next steps, or info request..."
-                      className="mt-2 h-24 w-full resize-y rounded-md border border-muted/60 bg-background/40 p-2 text-sm outline-none focus:ring-2 focus:ring-foreground/30"
+                      placeholder="Reasoning, next steps, or info request... (required)"
+                      className="mt-3 h-24 w-full resize-y rounded-md border border-muted/60 bg-background/40 p-2 text-sm outline-none focus:ring-2 focus:ring-foreground/30"
                     />
 
-                    {!canDecide && (
+                    {approverName && !note.trim() && (
                       <div className="mt-2 rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-300">
-                        Select a reviewer and enter a note before making a decision.
+                        Enter a note before making a decision.
                       </div>
                     )}
 
