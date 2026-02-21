@@ -13,6 +13,35 @@ const MAX_CONVERSATION_TITLE_LENGTH = 60;
 
 const ESCALATION_PATTERNS = /\b(submit|file|apply now|start my claim|register my claim)\b/i;
 
+const BENEFICIARY_ID_PATTERN = /\b(BEN-[A-Z0-9]+|ATL-[A-Z0-9-]+)\b/i;
+
+interface ToolCall {
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+function extractBeneficiaryId(message: string): string | null {
+  const match = BENEFICIARY_ID_PATTERN.exec(message);
+  return match ? match[1].toUpperCase() : null;
+}
+
+function mapMessageToTool(message: string): ToolCall | null {
+  const beneficiaryId = extractBeneficiaryId(message);
+  if (!beneficiaryId) return null;
+
+  if (/\b(check|status|claim status|payment status|progress|where is|my claim)\b/i.test(message)) {
+    return { name: "check_payment_status", arguments: { beneficiary_id: beneficiaryId } };
+  }
+  if (/\b(apply|extend|extension|request extension|requesting extension)\b/i.test(message)) {
+    return { name: "request_payment_extension", arguments: { beneficiary_id: beneficiaryId, reason: message } };
+  }
+  if (/\b(modify|update|change|edit|amend|alter)\b/i.test(message)) {
+    return { name: "modify_welfare_record", arguments: { beneficiary_id: beneficiaryId, changes: {} } };
+  }
+
+  return null;
+}
+
 const FALLBACK_RESPONSES: Array<{ pattern: RegExp; reply: string; escalate?: boolean }> = [
   {
     pattern: /\b(unemployment|unemployed|lost my job|redundan(t|cy)?|laid off)\b/i,
@@ -96,7 +125,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { message, history, conversation_id: incomingConvId } = body;
+  const { message, conversation_id: incomingConvId } = body;
 
   if (!message || typeof message !== "string") {
     return NextResponse.json({ error: "Missing message" }, { status: 400 });
@@ -127,18 +156,31 @@ export async function POST(req: NextRequest) {
   }
 
   const gatewayUrl = process.env.NEXT_PUBLIC_MCP_GATEWAY_URL;
+  const gatewaySecret = process.env.GATEWAY_SHARED_SECRET;
 
-  if (gatewayUrl) {
+  const toolCall = mapMessageToTool(message);
+
+  if (gatewayUrl && toolCall) {
     try {
-      const payload = {
-        message,
-        history: history ?? [],
+      const mcpPayload = {
+        jsonrpc: "2.0",
+        id: crypto.randomUUID(),
+        method: "tools/call",
+        params: {
+          name: toolCall.name,
+          arguments: toolCall.arguments,
+        },
       };
+
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (gatewaySecret) {
+        headers["Authorization"] = `Bearer ${gatewaySecret}`;
+      }
 
       const res = await fetch(`${gatewayUrl}/mcp/messages`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        headers,
+        body: JSON.stringify(mcpPayload),
       });
 
       if (!res.ok) {
@@ -146,7 +188,10 @@ export async function POST(req: NextRequest) {
       }
 
       const data = await res.json();
-      const reply = data.reply ?? data.message ?? "No response from gateway.";
+      const textContent = data?.result?.content?.find(
+        (c: { type: string; text?: string }) => c.type === "text"
+      )?.text;
+      const reply = textContent ?? data.reply ?? data.message ?? "No response from gateway.";
 
       if (user && conversationId) {
         await supabaseAdmin.from("chat_messages").insert({
