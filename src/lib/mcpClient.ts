@@ -1,12 +1,12 @@
 /**
- * MCP SSE Client
+ * MCP Gateway Client — HTTP POST transport
  *
- * Implements the MCP SSE transport protocol:
- * 1. GET /mcp/sse with Authorization header → SSE stream
- * 2. Read the "endpoint" event from SSE stream to get the POST URL
- * 3. POST JSON-RPC tool calls to that endpoint URL with Authorization header
- * 4. Gateway returns 202 Accepted (acknowledgment only)
- * 5. Read the JSON-RPC result from the SSE stream "message" event
+ * The Gateway runs on Vercel Serverless which does NOT support SSE streaming.
+ * We use direct HTTP POST to call tools instead.
+ *
+ * Strategy (tried in order):
+ * 1. POST /api/tools/call — proper JSON endpoint (if Gateway supports it)
+ * 2. POST /api/test-tool — Gateway's existing test endpoint (limited mapping)
  */
 
 export interface McpToolCallResult {
@@ -16,6 +16,13 @@ export interface McpToolCallResult {
   raw?: unknown;
 }
 
+// Map our tool names to the Gateway's /api/test-tool "tool" parameter
+const TOOL_NAME_MAP: Record<string, string> = {
+  check_payment_status: "check_payment",
+  request_payment_extension: "request_extension",
+  modify_welfare_record: "modify_record",
+};
+
 export async function callMcpTool(
   gatewayBaseUrl: string,
   bearerToken: string,
@@ -23,143 +30,96 @@ export async function callMcpTool(
   toolArguments: Record<string, unknown>,
 ): Promise<McpToolCallResult> {
   const baseUrl = gatewayBaseUrl.replace(/\/+$/, "");
-  const sseUrl = `${baseUrl}/mcp/sse`;
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${bearerToken}`,
+  };
 
-  // Step 1: Connect to SSE endpoint
-  const sseResponse = await fetch(sseUrl, {
-    headers: {
-      Authorization: `Bearer ${bearerToken}`,
-      Accept: "text/event-stream",
-    },
-  });
-
-  if (!sseResponse.ok) {
-    throw new Error(`SSE connect failed: ${sseResponse.status}`);
-  }
-
-  const reader = sseResponse.body?.getReader();
-  if (!reader) throw new Error("No SSE stream body");
-
-  const decoder = new TextDecoder();
-  let buffer = "";
-  const requestId = crypto.randomUUID();
-
-  // Helper to read SSE events from the stream
-  function parseSSELines(lines: string[]): Array<{ event: string; data: string }> {
-    const events: Array<{ event: string; data: string }> = [];
-    let currentEvent = "";
-    for (const line of lines) {
-      if (line.startsWith("event:")) {
-        currentEvent = line.slice(6).trim();
-      } else if (line.startsWith("data:")) {
-        events.push({ event: currentEvent || "message", data: line.slice(5).trim() });
-        currentEvent = "";
-      }
-    }
-    return events;
-  }
-
-  // 15 second timeout for the whole operation
-  const timeoutPromise = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error("Timeout waiting for MCP response")), 15000),
-  );
-
+  // --- Approach 1: Try /api/tools/call (proper JSON-RPC style) ---
   try {
-    // Step 2: Read SSE stream until we get the "endpoint" event
-    let messagesUrl = "";
-    while (!messagesUrl) {
-      const { done, value } = await Promise.race([reader.read(), timeoutPromise]);
-      if (done) throw new Error("SSE stream closed before endpoint event");
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-
-      for (const { event, data } of parseSSELines(lines)) {
-        if (event === "endpoint") {
-          if (data.startsWith("http")) {
-            messagesUrl = data;
-          } else {
-            messagesUrl = `${baseUrl}${data.startsWith("/") ? "" : "/"}${data}`;
-          }
-        }
-      }
-    }
-
-    // Step 3: POST the JSON-RPC tool call (do NOT close SSE stream yet!)
-    const mcpPayload = {
-      jsonrpc: "2.0",
-      id: requestId,
-      method: "tools/call",
-      params: {
-        name: toolName,
-        arguments: toolArguments,
-      },
-    };
-
-    const postResponse = await fetch(messagesUrl, {
+    const response = await fetch(`${baseUrl}/api/tools/call`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${bearerToken}`,
-      },
-      body: JSON.stringify(mcpPayload),
+      headers,
+      body: JSON.stringify({
+        tool: toolName,
+        arguments: toolArguments,
+      }),
     });
 
-    if (!postResponse.ok) {
-      const errorText = await postResponse.text().catch(() => "");
-      throw new Error(`MCP POST failed: ${postResponse.status} ${errorText}`);
+    if (response.ok) {
+      const data = await response.json();
+      return parseGatewayResult(data);
     }
-
-    // Step 4: The POST returns 202 Accepted (plain text) — do NOT parse as JSON.
-    // Instead, read the SSE stream for the "message" event containing the JSON-RPC result.
-
-    // First, check if the POST response itself is JSON (some gateways return inline)
-    const postContentType = postResponse.headers.get("content-type") ?? "";
-    if (postContentType.includes("application/json")) {
-      const data = await postResponse.json();
-      return parseJsonRpcResult(data);
+    // If 404, the endpoint doesn't exist yet — fall through to approach 2
+    if (response.status !== 404) {
+      const errorText = await response.text().catch(() => "");
+      throw new Error(`/api/tools/call failed: ${response.status} ${errorText}`);
     }
-
-    // Otherwise, wait for the result on the SSE stream
-    while (true) {
-      const { done, value } = await Promise.race([reader.read(), timeoutPromise]);
-      if (done) throw new Error("SSE stream closed before receiving response");
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-
-      for (const { event, data } of parseSSELines(lines)) {
-        if (event === "message" && data) {
-          try {
-            const parsed = JSON.parse(data);
-            // Check if this is our response by matching the request ID
-            if (parsed.id === requestId) {
-              return parseJsonRpcResult(parsed);
-            }
-          } catch {
-            // Not JSON, skip this SSE event
-          }
-        }
-      }
+  } catch (err) {
+    // TypeError = network-level failure (e.g. DNS/connection error) — fall through to approach 2.
+    // Any other error was thrown explicitly above (non-404 HTTP status) — rethrow it.
+    if (!(err instanceof TypeError)) {
+      throw err;
     }
-  } finally {
-    // Always clean up the SSE stream
-    reader.cancel().catch(() => {});
   }
+
+  // --- Approach 2: Fall back to /api/test-tool ---
+  const mappedTool = TOOL_NAME_MAP[toolName];
+  if (!mappedTool) {
+    throw new Error(`No tool mapping for "${toolName}" on the Gateway's /api/test-tool endpoint`);
+  }
+
+  const response = await fetch(`${baseUrl}/api/test-tool`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ tool: mappedTool }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    throw new Error(`Gateway /api/test-tool failed: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  return parseGatewayResult(data);
 }
 
-function parseJsonRpcResult(data: Record<string, unknown>): McpToolCallResult {
-  // Extract text from MCP JSON-RPC response
-  // Format: { jsonrpc: "2.0", id: "...", result: { content: [{ type: "text", text: "..." }] } }
-  const result = data?.result as Record<string, unknown> | undefined;
-  const content = Array.isArray(result?.content)
-    ? (result.content as Array<{ type: string; text?: string }>)
-    : undefined;
-  const textContent = content?.find((c) => c.type === "text")?.text;
+function parseGatewayResult(
+  data: Record<string, unknown>,
+): McpToolCallResult {
+  // The Gateway returns different shapes depending on the endpoint:
+  // /api/test-tool: { "result": "PENDING REVIEW (Ref: evt_xxx)..." }
+  // /api/tools/call: { "result": "..." } or MCP-style { "content": [{ "type": "text", "text": "..." }] }
 
-  const reply = textContent ?? result ?? data?.reply ?? data?.message ?? "No response from gateway.";
+  // Try MCP JSON-RPC format first
+  const content = Array.isArray(data?.content)
+    ? (data.content as Array<{ type: string; text?: string }>)
+    : undefined;
+  const textFromContent = content?.find((c) => c.type === "text")?.text;
+
+  // Try nested result with content
+  const result = data?.result as Record<string, unknown> | string | undefined;
+  let textFromResult: string | undefined;
+  if (typeof result === "string") {
+    textFromResult = result;
+  } else if (result && typeof result === "object") {
+    const resultContent = Array.isArray(result.content)
+      ? (result.content as Array<{ type: string; text?: string }>)
+      : undefined;
+    textFromResult = resultContent?.find((c) => c.type === "text")?.text;
+    if (!textFromResult) {
+      textFromResult = (result.text as string) ?? (result.message as string);
+    }
+  }
+
+  const reply =
+    textFromContent ??
+    textFromResult ??
+    (typeof data?.reply === "string" ? data.reply : undefined) ??
+    (typeof data?.message === "string" ? data.message : undefined) ??
+    (typeof data?.result === "string" ? data.result : undefined) ??
+    "No response from gateway.";
+
   const replyStr = typeof reply === "string" ? reply : JSON.stringify(reply);
 
   // Check for escalation / PENDING REVIEW pattern
