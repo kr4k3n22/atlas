@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { createClient } from "@/lib/supabaseClient";
+import { toast } from "sonner";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -140,6 +141,46 @@ export default function ChatPage() {
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  // NOTE: Realtime requires the `chat_messages` table to have Realtime enabled
+  // in the Supabase dashboard (Database → Replication → Realtime).
+  React.useEffect(() => {
+    if (!activeConvId) return;
+
+    const channel = supabase
+      .channel(`chat-messages-${activeConvId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_messages",
+          filter: `conversation_id=eq.${activeConvId}`,
+        },
+        (payload) => {
+          const newMsg = payload.new as Message;
+          if (newMsg.role !== "assistant") return;
+          // Avoid duplicates from the optimistic local state added during sendMessage
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+          const content = newMsg.content.toLowerCase();
+          // "escalat" intentionally matches both "escalate" and "escalated"
+          const reviewPatterns = ["under review", "pending review", "high risk", "escalat"];
+          if (reviewPatterns.some((p) => content.includes(p))) {
+            toast.info("🔔 Your request is being reviewed by a human reviewer");
+          } else {
+            toast.success("✅ A reviewer has responded to your request");
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [activeConvId, supabase]);
 
   async function startNewChat() {
     setActiveConvId(null);
