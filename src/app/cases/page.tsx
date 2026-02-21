@@ -112,6 +112,21 @@ function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
 
+function fmtTs(iso: string) {
+  try {
+    const d = new Date(iso);
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    const ss = String(d.getSeconds()).padStart(2, "0");
+    return `${dd}/${mm}/${yyyy} ${hh}:${min}:${ss}`;
+  } catch {
+    return iso;
+  }
+}
+
 function badgeClass(label: string) {
   if (label === "BLOCK") return "bg-red-600/90 text-white border-red-500/40";
   if (label === "ESCALATE") return "bg-orange-500/90 text-white border-orange-400/40";
@@ -1018,7 +1033,7 @@ export default function CasesPage() {
                             </span>
                           </td>
                           <td className="px-3 py-3 text-muted-foreground align-top hidden md:table-cell">
-                            {new Date(c.created_at).toLocaleString()}
+                            {fmtTs(c.created_at)}
                           </td>
                           <td className="px-3 py-3 align-top hidden lg:table-cell">{c.user_name}</td>
                           <td className="px-3 py-3 text-muted-foreground align-top whitespace-normal break-words">
@@ -1056,6 +1071,14 @@ export default function CasesPage() {
                     <div className="mt-1 text-xs text-muted-foreground">
                       ID: <span className="font-mono">{selected.id}</span>
                     </div>
+                    {typeof selected.tool_args_redacted?.gateway_event_id === "string" && (
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground">Inngest Event ID:</span>
+                        <span className="inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-mono text-[11px] text-amber-400">
+                          {selected.tool_args_redacted.gateway_event_id as string}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -1157,7 +1180,7 @@ export default function CasesPage() {
                         {selected.audit_trail.map((a, i) => (
                           <div key={a.ts + ":" + i} className="rounded-md border border-muted/40 p-2">
                             <div className="text-xs text-muted-foreground">
-                              {new Date(a.ts).toLocaleString()} - {a.actor} - {a.action}
+                              {fmtTs(a.ts)} - {a.actor} - {a.action}
                             </div>
                             {a.detail ? (
                               <JsonOrTextDisplay value={a.detail} />

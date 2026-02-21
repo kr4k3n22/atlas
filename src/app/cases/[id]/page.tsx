@@ -44,6 +44,21 @@ function badge(label: string) {
   return "bg-slate-600/60 text-slate-100 border-slate-500/60";
 }
 
+function fmtTs(iso: string) {
+  try {
+    const d = new Date(iso);
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    const ss = String(d.getSeconds()).padStart(2, "0");
+    return `${dd}/${mm}/${yyyy} ${hh}:${min}:${ss}`;
+  } catch {
+    return iso;
+  }
+}
+
 export default async function CaseDetailPage(
   props: { params: Promise<{ id: string }> }
 ) {
@@ -59,7 +74,15 @@ export default async function CaseDetailPage(
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground">Case</div>
             <h1 className="text-2xl font-semibold tracking-tight">{c.id}</h1>
-            <div className="text-xs text-muted-foreground">Created: {c.created_at}</div>
+            {typeof (c.tool_args_redacted as Record<string, unknown>)?.gateway_event_id === "string" && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Inngest Event ID:</span>
+                <span className="inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-mono text-[11px] text-amber-400">
+                  {(c.tool_args_redacted as Record<string, unknown>).gateway_event_id as string}
+                </span>
+              </div>
+            )}
+            <div className="text-xs text-muted-foreground">Created: {fmtTs(c.created_at)}</div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -146,7 +169,7 @@ export default async function CaseDetailPage(
                     className="rounded-md border border-border/60 bg-background/60 p-3"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                      <div className="font-semibold">{h.ts}</div>
+                      <div className="font-semibold">{fmtTs(h.ts)}</div>
                       <div className="text-muted-foreground">
                         <span className="font-mono">{h.actor}</span> -{" "}
                         <span className="font-mono">{h.action}</span>

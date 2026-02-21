@@ -202,6 +202,8 @@ export async function POST(req: NextRequest) {
         risk_label: result.risk_label,
         risk_rationale: result.risk_rationale,
         policy_refs: result.policy_refs,
+        recommended_action: result.recommended_action,
+        timestamp: new Date().toISOString(),
       });
     } catch (err) {
       console.error("[chat/route] MCP SSE gateway error, falling back:", err);

@@ -151,7 +151,13 @@ function riskPanelTone(label: CaseRow["risk_label"]) {
 function fmtTs(iso: string) {
   try {
     const d = new Date(iso);
-    return d.toISOString().replace("T", " ").replace(".000Z", "Z");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    const ss = String(d.getSeconds()).padStart(2, "0");
+    return `${dd}/${mm}/${yyyy} ${hh}:${min}:${ss}`;
   } catch {
     return iso;
   }
@@ -400,12 +406,21 @@ export default function CasesTableClient({ cases }: Props) {
 
   function PreviewContent({ c }: { c: CaseRow }) {
     const slaWarning = getSlaWarning(c.created_at, c.status);
+    const gatewayEventId = typeof c.tool_args_redacted?.gateway_event_id === "string" ? c.tool_args_redacted.gateway_event_id : null;
 
     return (
       <div className="space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1">
             <div className="text-lg font-semibold">{c.id}</div>
+            {gatewayEventId && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">Gateway Ref:</span>
+                <span className="inline-flex items-center rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-mono text-[11px] text-amber-400">
+                  {gatewayEventId}
+                </span>
+              </div>
+            )}
             <div className="text-xs text-muted-foreground">Created: {fmtTs(c.created_at)}</div>
           </div>
           <div className="flex flex-col items-end gap-2">
@@ -495,7 +510,7 @@ export default function CasesTableClient({ cases }: Props) {
             {c.history.map((h, idx) => (
               <div key={idx} className="rounded-md border bg-background p-2">
                 <div className="flex gap-2 text-xs text-muted-foreground">
-                  <span className="w-44">{h.ts}</span>
+                  <span className="w-44">{fmtTs(h.ts)}</span>
                   <span className="font-mono w-24">{h.actor}</span>
                   <span className="font-mono w-24">{h.event}</span>
                 </div>
