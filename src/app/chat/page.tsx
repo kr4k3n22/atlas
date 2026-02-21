@@ -68,6 +68,9 @@ const QUICK_PROMPTS = [
   "What documents do I need?",
 ];
 
+// Patterns indicating a case decision (approval/rejection/info request) from a reviewer
+const DECISION_PATTERNS = ["approved", "not approved", "additional information"];
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function ChatPage() {
@@ -168,7 +171,11 @@ export default function ChatPage() {
           const content = newMsg.content.toLowerCase();
           // "escalat" intentionally matches both "escalate" and "escalated"
           const reviewPatterns = ["under review", "pending review", "high risk", "escalat"];
-          if (reviewPatterns.some((p) => content.includes(p))) {
+          if (DECISION_PATTERNS.some((p) => content.includes(p))) {
+            // A case decision has arrived — dismiss the escalation banner
+            setEscalation(null);
+            toast.success("✅ A reviewer has responded to your request");
+          } else if (reviewPatterns.some((p) => content.includes(p))) {
             toast.info("🔔 Your request is being reviewed by a human reviewer");
           } else {
             toast.success("✅ A reviewer has responded to your request");
@@ -181,6 +188,42 @@ export default function ChatPage() {
       void supabase.removeChannel(channel);
     };
   }, [activeConvId, supabase]);
+
+  // Polling fallback for chat_messages: when an escalation is active, poll every 8 s
+  // so the approval message appears even if Realtime is blocked by RLS.
+  React.useEffect(() => {
+    if (!activeConvId || !escalation) return;
+
+    const pollInterval = setInterval(() => {
+      fetch(`/api/chats/${activeConvId}`)
+        .then((r) => r.json())
+        .then((data) => {
+          const fetched: Message[] = data.messages ?? [];
+          setMessages((prev) => {
+            const existingIds = new Set(prev.map((m) => m.id));
+            const newMsgs = fetched.filter((m) => !existingIds.has(m.id));
+            if (newMsgs.length === 0) return prev;
+            // Auto-dismiss escalation if an approval/rejection message arrived
+            for (const m of newMsgs) {
+              if (m.role === "assistant") {
+                const c = m.content.toLowerCase();
+                if (DECISION_PATTERNS.some((p) => c.includes(p))) {
+                  setEscalation(null);
+                  toast.success("✅ A reviewer has responded to your request");
+                  break;
+                }
+              }
+            }
+            return [...prev, ...newMsgs];
+          });
+        })
+        .catch(() => {
+          // Silently ignore poll errors
+        });
+    }, 8_000);
+
+    return () => clearInterval(pollInterval);
+  }, [activeConvId, escalation]);
 
   async function startNewChat() {
     setActiveConvId(null);

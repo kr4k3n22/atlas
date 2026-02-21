@@ -22,9 +22,18 @@ export function playNotificationChime(urgent: boolean = false) {
       osc.stop(startTime + duration);
     };
 
-    playTone(880, ctx.currentTime, 0.15);
-    if (urgent) {
-      playTone(988, ctx.currentTime + 0.2, 0.15);
+    const scheduleBeeps = () => {
+      playTone(880, ctx.currentTime, 0.15);
+      if (urgent) {
+        playTone(988, ctx.currentTime + 0.2, 0.15);
+      }
+    };
+
+    // Resume the context if it was suspended by browser autoplay policy
+    if (ctx.state === "suspended") {
+      ctx.resume().then(scheduleBeeps).catch(() => {});
+    } else {
+      scheduleBeeps();
     }
   } catch {
     // Audio not available – silently ignore
