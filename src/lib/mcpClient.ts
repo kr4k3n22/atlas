@@ -13,6 +13,11 @@ export interface McpToolCallResult {
   reply: string;
   escalated: boolean;
   case_id?: string;
+  // NEW — risk assessment from synchronous SLM scoring
+  risk_score?: number;
+  risk_label?: "ROUTINE" | "ESCALATE" | "BLOCK";
+  risk_rationale?: string;
+  policy_refs?: string[];
   raw?: unknown;
 }
 
@@ -127,10 +132,43 @@ function parseGatewayResult(
   const escalated = !!pendingMatch || data?.escalated === true;
   const case_id = pendingMatch?.[1] ?? (data?.case_id as string | undefined);
 
+  // Extract risk assessment fields (from synchronous SLM scoring)
+  // The Gateway may return them at the top level or nested under `result`.
+  const nestedResult =
+    data?.result !== null && typeof data?.result === "object" && !Array.isArray(data?.result)
+      ? (data.result as Record<string, unknown>)
+      : undefined;
+
+  const riskScore: number | undefined =
+    typeof data?.risk_score === "number" ? data.risk_score
+    : typeof nestedResult?.risk_score === "number" ? nestedResult.risk_score
+    : undefined;
+
+  const riskLabel: "ROUTINE" | "ESCALATE" | "BLOCK" | undefined =
+    typeof data?.risk_label === "string" ? data.risk_label as "ROUTINE" | "ESCALATE" | "BLOCK"
+    : typeof nestedResult?.risk_label === "string" ? nestedResult.risk_label as "ROUTINE" | "ESCALATE" | "BLOCK"
+    : undefined;
+
+  const riskRationale: string | undefined =
+    typeof data?.risk_rationale === "string" ? data.risk_rationale
+    : typeof data?.rationale === "string" ? data.rationale
+    : typeof nestedResult?.risk_rationale === "string" ? nestedResult.risk_rationale
+    : typeof nestedResult?.rationale === "string" ? nestedResult.rationale
+    : undefined;
+
+  const policyRefs: string[] | undefined =
+    Array.isArray(data?.policy_refs) ? data.policy_refs as string[]
+    : Array.isArray(nestedResult?.policy_refs) ? nestedResult.policy_refs as string[]
+    : undefined;
+
   return {
     reply: replyStr,
     escalated,
     case_id,
+    risk_score: riskScore,
+    risk_label: riskLabel,
+    risk_rationale: riskRationale,
+    policy_refs: policyRefs,
     raw: data,
   };
 }

@@ -181,10 +181,10 @@ export async function POST(req: NextRequest) {
           user_message: message,
           tool_name: toolCall.name,
           tool_args_redacted: toolCall.arguments,
-          risk_label: "ESCALATE",
-          risk_score: 75,
-          risk_rationale: "Escalated by MCP Gateway for human review.",
-          policy_refs: [],
+          risk_label: result.risk_label ?? "ESCALATE",
+          risk_score: result.risk_score ?? 75,
+          risk_rationale: result.risk_rationale ?? "Escalated by MCP Gateway for human review.",
+          policy_refs: result.policy_refs ?? [],
           gateway_event_id: result.case_id,
           conversation_id: conversationId ?? undefined,
         }).catch((err) => {
@@ -197,6 +197,11 @@ export async function POST(req: NextRequest) {
         escalated: result.escalated,
         case_id: result.case_id,
         conversation_id: conversationId,
+        // NEW — expose risk data so the AI Agent/frontend can use it
+        risk_score: result.risk_score,
+        risk_label: result.risk_label,
+        risk_rationale: result.risk_rationale,
+        policy_refs: result.policy_refs,
       });
     } catch (err) {
       console.error("[chat/route] MCP SSE gateway error, falling back:", err);
