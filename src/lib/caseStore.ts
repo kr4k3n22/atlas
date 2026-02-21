@@ -56,9 +56,14 @@ export async function createCase(input: {
   risk_rationale: string;
   policy_refs: string[];
   gateway_event_id?: string;
+  conversation_id?: string;
 }) {
   const id = `CASE-${nanoid(6).toUpperCase()}`;
   const created_at = nowIso();
+
+  const extraMeta: Record<string, unknown> = {};
+  if (input.gateway_event_id) extraMeta.gateway_event_id = input.gateway_event_id;
+  if (input.conversation_id) extraMeta.conversation_id = input.conversation_id;
 
   const c: CaseRecord = CaseSchema.parse({
     id,
@@ -67,8 +72,8 @@ export async function createCase(input: {
     user_display: input.user_display,
     user_message: input.user_message,
     tool_name: input.tool_name,
-    tool_args_redacted: input.gateway_event_id
-      ? { ...input.tool_args_redacted, gateway_event_id: input.gateway_event_id }
+    tool_args_redacted: Object.keys(extraMeta).length
+      ? { ...input.tool_args_redacted, ...extraMeta }
       : input.tool_args_redacted,
     risk_label: input.risk_label,
     risk_score: input.risk_score,
@@ -169,6 +174,35 @@ export async function applyDecision(input: {
       tool_args: updated.tool_args_redacted ?? {},
       decision_source: "APPROVED",
     });
+  }
+
+  // --- Write outcome back to chat conversation ---
+  const conversationId = current.tool_args_redacted?.conversation_id;
+  if (typeof conversationId === "string" && conversationId) {
+    const noteText = note ? ` ${note}` : "";
+    const chatContent =
+      decision === "APPROVE"
+        ? `✅ Your request has been approved by a reviewer.${noteText}`
+        : decision === "REJECT"
+          ? `❌ Your request was not approved.${noteText}`
+          : `ℹ️ The reviewer has requested additional information.${noteText}`;
+
+    const { error: msgError } = await supabaseAdmin.from("chat_messages").insert({
+      conversation_id: conversationId,
+      role: "assistant",
+      content: chatContent,
+    });
+    if (msgError) {
+      console.warn(`[caseStore] Failed to write decision message to chat for ${updated.id}:`, msgError.message);
+    }
+
+    const { error: convError } = await supabaseAdmin
+      .from("conversations")
+      .update({ updated_at: nowIso() })
+      .eq("id", conversationId);
+    if (convError) {
+      console.warn(`[caseStore] Failed to update conversation timestamp for ${updated.id}:`, convError.message);
+    }
   }
 
   // --- Notify Gateway (non-blocking) ---

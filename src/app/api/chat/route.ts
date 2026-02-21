@@ -186,6 +186,7 @@ export async function POST(req: NextRequest) {
           risk_rationale: "Escalated by MCP Gateway for human review.",
           policy_refs: [],
           gateway_event_id: result.case_id,
+          conversation_id: conversationId ?? undefined,
         }).catch((err) => {
           console.error("[chat/route] Failed to create case record for escalated tool call:", err);
         });
