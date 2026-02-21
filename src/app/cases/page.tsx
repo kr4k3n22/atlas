@@ -596,33 +596,41 @@ export default function CasesPage() {
           | "CLOSED";
       });
 
-    // Polling fallback: when Realtime is not SUBSCRIBED, poll every 15 s.
+    // Polling fallback: always poll every 10 s as a safety net even when Realtime appears connected.
     const pollInterval = setInterval(() => {
-      if (realtimeStatusRef.current === "SUBSCRIBED") return;
       fetchCases()
         .then((data) => {
           setAll((prev) => {
             const existingIds = new Set(prev.map((c) => c.id));
             const newCases = data.filter((c) => !existingIds.has(c.id));
-            if (newCases.length === 0) return prev;
-            if (soundEnabledRef.current) {
-              for (const nc of newCases) {
-                if (nc.risk_label === "BLOCK") {
-                  playNotificationChime(true);
-                  break;
-                } else if (nc.risk_label === "ESCALATE") {
-                  playNotificationChime(false);
-                  break;
-                }
+            // Update status of existing cases detected via polling
+            const updated = prev.map((existing) => {
+              const fresh = data.find((d) => d.id === existing.id);
+              return fresh && fresh.status !== existing.status ? fresh : existing;
+            });
+            if (newCases.length === 0) return updated;
+            for (const nc of newCases) {
+              if (nc.risk_label === "BLOCK") {
+                toast.error("🚨 New high-risk case requires review", {
+                  description: `Case ${nc.id} has been flagged as BLOCK`,
+                });
+                if (soundEnabledRef.current) playNotificationChime(true);
+                break;
+              } else if (nc.risk_label === "ESCALATE") {
+                toast.warning("⚠️ New escalated case requires review", {
+                  description: `Case ${nc.id} has been escalated`,
+                });
+                if (soundEnabledRef.current) playNotificationChime(false);
+                break;
               }
             }
-            return [...newCases, ...prev];
+            return [...newCases, ...updated];
           });
         })
         .catch(() => {
           // Silently ignore poll errors
         });
-    }, 15_000);
+    }, 10_000);
 
     return () => {
       clearInterval(pollInterval);
