@@ -3,6 +3,7 @@
 import React from "react";
 import { ThemeProvider, useTheme } from "next-themes";
 import { SettingsProvider, useSettings } from "@/components/settings-provider";
+import { Toaster } from "sonner";
 
 function ThemeSync() {
   const { settings } = useSettings();
@@ -21,6 +22,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <SettingsProvider>
         <ThemeSync />
         {children}
+        <Toaster richColors closeButton />
       </SettingsProvider>
     </ThemeProvider>
   );

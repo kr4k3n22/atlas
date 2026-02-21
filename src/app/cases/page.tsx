@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import ThemeInit from "@/app/_components/ThemeInit";
 import { APPROVERS } from "@/lib/approvers";
 import { createClient } from "@/lib/supabaseClient";
+import { toast } from "sonner";
 
 type RiskLabel = "ROUTINE" | "ESCALATE" | "BLOCK";
 type CaseStatus = "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "NEEDS_INFO" | "CLOSED";
@@ -522,6 +523,57 @@ export default function CasesPage() {
   useEffect(() => {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // NOTE: Realtime requires the `approval_queue` table to have Realtime enabled
+  // in the Supabase dashboard (Database → Replication → Realtime).
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("cases-realtime")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "approval_queue" },
+        (payload) => {
+          const newCase = payload.new as CaseRecord;
+          setAll((prev) => {
+            if (prev.some((c) => c.id === newCase.id)) return prev;
+            return [newCase, ...prev];
+          });
+          if (newCase.risk_label === "BLOCK") {
+            toast.error("🚨 New high-risk case requires review", {
+              description: `Case ${newCase.id} has been flagged as BLOCK`,
+            });
+          } else if (newCase.risk_label === "ESCALATE") {
+            toast.warning("⚠️ New escalated case requires review", {
+              description: `Case ${newCase.id} has been escalated`,
+            });
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "approval_queue" },
+        (payload) => {
+          const updated = payload.new as CaseRecord;
+          setAll((prev) =>
+            prev.map((c) => (c.id === updated.id ? updated : c))
+          );
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "approval_queue" },
+        (payload) => {
+          const deleted = payload.old as { id: string };
+          setAll((prev) => prev.filter((c) => c.id !== deleted.id));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, []);
 
   const counts = useMemo(() => {
