@@ -102,11 +102,47 @@ function getFallbackReply(message: string): { reply: string; escalated?: boolean
   return { reply: DEFAULT_REPLY };
 }
 
+/**
+ * Extract the Supabase auth token from cookies.
+ * The browser client stores it as `sb-<projectRef>-auth-token`.
+ * The value is a JSON-encoded object with access_token inside.
+ */
+function extractAccessToken(cookieHeader: string, supabaseUrl: string): string | null {
+  const projectRef = supabaseUrl.replace(/^https?:\/\//, "").split(".")[0];
+  const storageKey = `sb-${projectRef}-auth-token`;
+
+  // Find the cookie
+  const cookies = cookieHeader.split(";").map((c) => c.trim());
+  const match = cookies.find((c) => c.startsWith(`${storageKey}=`));
+  if (!match) return null;
+
+  try {
+    const value = decodeURIComponent(match.split("=").slice(1).join("="));
+    const parsed = JSON.parse(value);
+    // Could be the full session object or just the token string
+    if (typeof parsed === "string") return parsed;
+    return parsed?.access_token ?? parsed?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function getAuthUser(req: NextRequest) {
   const cookieHeader = req.headers.get("cookie") ?? "";
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!supabaseUrl || !supabaseAnonKey) return null;
+
+  // Try to extract the access token from the cookie
+  const accessToken = extractAccessToken(cookieHeader, supabaseUrl);
+
+  if (accessToken) {
+    // Use supabaseAdmin (service role) to validate the token — this always works
+    const { data: { user } } = await supabaseAdmin.auth.getUser(accessToken);
+    if (user) return user;
+  }
+
+  // Fallback: try the standard cookie-based approach
   const { createClient } = await import("@supabase/supabase-js");
   const client = createClient(supabaseUrl, supabaseAnonKey, {
     auth: { persistSession: false },
