@@ -42,6 +42,22 @@ function stripInlineJson(text: string): string {
   return text.replace(/\s*\{(?:[^{}]|\{[^{}]*\})*\}\s*/g, " ").replace(/\s{2,}/g, " ").trim();
 }
 
+/** Format a date string as DD/MM/YYYY HH:mm:ss */
+function formatDateTime(dateStr: string): string {
+  try {
+    const d = new Date(dateStr);
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, "0");
+    const min = String(d.getMinutes()).padStart(2, "0");
+    const ss = String(d.getSeconds()).padStart(2, "0");
+    return `${dd}/${mm}/${yyyy} ${hh}:${min}:${ss}`;
+  } catch {
+    return dateStr;
+  }
+}
+
 function relativeDate(dateStr: string) {
   const now = new Date();
   const d = new Date(dateStr);
@@ -81,6 +97,100 @@ const CONTENT_TRACKING_TIMEOUT_MS = 5000;
 // Number of recent messages to check for content-based deduplication
 const CONTENT_DEDUP_WINDOW = 3;
 
+// ─── EscalationCard ──────────────────────────────────────────────────────────
+
+function EscalationCard({
+  escalation,
+  timestamp,
+}: {
+  escalation: {
+    case_id: string;
+    risk_score?: number;
+    risk_label?: string;
+    risk_rationale?: string;
+    policy_refs?: string[];
+    recommended_action?: string;
+    timestamp?: string;
+  };
+  timestamp: string;
+}) {
+  const riskColor =
+    escalation.risk_label === "BLOCK"
+      ? "text-red-400"
+      : escalation.risk_label === "ESCALATE"
+        ? "text-amber-400"
+        : "text-green-400";
+  const riskBg =
+    escalation.risk_label === "BLOCK"
+      ? "bg-red-500/15 border-red-500/30 text-red-300"
+      : escalation.risk_label === "ESCALATE"
+        ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
+        : "bg-green-500/15 border-green-500/30 text-green-300";
+
+  return (
+    <div className="rounded-lg border border-amber-500/30 bg-gradient-to-b from-amber-500/10 to-transparent space-y-3 p-3 -mx-1">
+      <div className="flex items-center gap-2">
+        <span className="text-lg">⏳</span>
+        <span className="font-semibold text-amber-400">Request Under Review</span>
+      </div>
+
+      {escalation.case_id && (
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-muted-foreground">Reference ID:</span>
+          <span className="inline-flex items-center rounded border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 font-mono text-[11px] text-amber-300">
+            {escalation.case_id}
+          </span>
+        </div>
+      )}
+
+      {(escalation.risk_label || escalation.risk_score !== undefined) && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {escalation.risk_label && (
+            <span className={`inline-flex items-center rounded-[3px] border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${riskBg}`}>
+              {escalation.risk_label}
+            </span>
+          )}
+          {escalation.risk_score !== undefined && (
+            <span className={`text-xs font-medium ${riskColor}`}>
+              Score: {escalation.risk_score}/100
+            </span>
+          )}
+        </div>
+      )}
+
+      {escalation.risk_rationale && (
+        <div>
+          <div className="text-[11px] text-muted-foreground font-medium mb-0.5">Rationale</div>
+          <p className="text-xs text-foreground/80">{escalation.risk_rationale}</p>
+        </div>
+      )}
+
+      {escalation.policy_refs && escalation.policy_refs.length > 0 && (
+        <div>
+          <div className="text-[11px] text-muted-foreground font-medium mb-1">Policy References</div>
+          <div className="flex flex-wrap gap-1">
+            {escalation.policy_refs.map((ref) => (
+              <span
+                key={ref}
+                className="inline-flex items-center rounded border border-border bg-background/40 px-1.5 py-0.5 text-[10px]"
+              >
+                {ref}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="text-xs text-muted-foreground/80">
+        Your request has been forwarded to a case officer for review. You will be notified when a
+        decision is made.
+      </p>
+
+      <p className="text-[10px] text-muted-foreground/50">{formatDateTime(escalation.timestamp ?? timestamp)}</p>
+    </div>
+  );
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function ChatPage() {
@@ -103,6 +213,9 @@ export default function ChatPage() {
     risk_score?: number;
     risk_label?: string;
     risk_rationale?: string;
+    policy_refs?: string[];
+    recommended_action?: string;
+    timestamp?: string;
   } | null>(null);
 
   const bottomRef = React.useRef<HTMLDivElement>(null);
@@ -340,6 +453,9 @@ export default function ChatPage() {
           risk_score: data.risk_score,
           risk_label: data.risk_label,
           risk_rationale: data.risk_rationale,
+          policy_refs: data.policy_refs,
+          recommended_action: data.recommended_action,
+          timestamp: data.timestamp ?? new Date().toISOString(),
         });
       }
 
@@ -374,10 +490,25 @@ export default function ChatPage() {
     window.location.href = "/login";
   }
 
+  // Build a Request ID map: sort all conversations by created_at ascending, assign sequential IDs
+  const requestIdMap = React.useMemo(() => {
+    const sorted = [...conversations].sort((a, b) => a.created_at.localeCompare(b.created_at));
+    const map = new Map<string, number>();
+    sorted.forEach((c, i) => map.set(c.id, i + 1));
+    return map;
+  }, [conversations]);
+
+  function getRequestId(num: number) {
+    return `Request ID: #${String(num).padStart(5, "0")}`;
+  }
+
   // Filtered conversations for sidebar search
-  const filtered = conversations.filter((c) =>
-    c.title.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = conversations.filter((c) => {
+    const reqId = getRequestId(requestIdMap.get(c.id) ?? 0).toLowerCase();
+    const title = c.title.toLowerCase();
+    const q = search.toLowerCase();
+    return reqId.includes(q) || title.includes(q);
+  });
   const groups = groupConversations(filtered);
   const groupOrder = ["Today", "Yesterday", "Previous 7 Days", "Older"] as const;
 
@@ -385,11 +516,11 @@ export default function ChatPage() {
 
   const sidebar = (
     <aside className="flex flex-col h-full bg-background border-r border-border w-64 shrink-0">
-      {/* New chat */}
+      {/* New Request */}
       <div className="p-3 border-b border-border">
         <Button className="w-full justify-start gap-2" onClick={startNewChat}>
           <Plus className="w-4 h-4" />
-          New chat
+          + New Request
         </Button>
       </div>
 
@@ -434,7 +565,17 @@ export default function ChatPage() {
                     }`}
                     onClick={() => selectConversation(conv.id)}
                   >
-                    <span className="flex-1 truncate">{conv.title}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate text-xs font-semibold text-foreground/90">
+                        {getRequestId(requestIdMap.get(conv.id) ?? 0)}
+                      </div>
+                      <div className="truncate text-[11px] text-muted-foreground leading-tight">
+                        {conv.title}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground/60 mt-0.5">
+                        {formatDateTime(conv.updated_at)}
+                      </div>
+                    </div>
                     {deleteConfirm === conv.id ? (
                       <div className="flex gap-1 shrink-0">
                         <button
@@ -540,14 +681,14 @@ export default function ChatPage() {
           <div className="mx-auto w-full max-w-3xl px-4 pt-4">
             <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
               <span className="text-base shrink-0">⏳</span>
-              <div>
+              <div className="flex-1 min-w-0">
                 <span className="font-medium">
                   Your request has been escalated for review by a case officer.
                 </span>{" "}
-                You'll be notified when a decision is made.
+                You&apos;ll be notified when a decision is made.
                 {escalation.case_id && (
-                  <span className="ml-1 font-mono text-xs opacity-80">
-                    (Ref: {escalation.case_id})
+                  <span className="ml-2 inline-flex items-center rounded border border-amber-500/40 bg-amber-500/20 px-2 py-0.5 font-mono text-[11px] text-amber-300">
+                    Reference: {escalation.case_id}
                   </span>
                 )}
                 {(escalation.risk_label || escalation.risk_score !== undefined) && (
@@ -559,7 +700,7 @@ export default function ChatPage() {
                     )}
                     {escalation.risk_score !== undefined && (
                       <span className="text-xs opacity-80">
-                        Risk Score: {escalation.risk_score}/100
+                        Score: {escalation.risk_score}/100
                       </span>
                     )}
                   </div>
@@ -568,6 +709,9 @@ export default function ChatPage() {
                   <p className="mt-1 text-xs opacity-70 line-clamp-2">
                     {escalation.risk_rationale}
                   </p>
+                )}
+                {escalation.timestamp && (
+                  <p className="mt-1 text-[10px] opacity-50">{formatDateTime(escalation.timestamp)}</p>
                 )}
               </div>
               <button
@@ -618,39 +762,58 @@ export default function ChatPage() {
             )}
 
             {/* Messages */}
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                {msg.role === "assistant" && (
-                  <div className="flex items-end shrink-0">
-                    <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center text-sm">
-                      🏛️
+            {messages.map((msg) => {
+              // Check if this assistant message is an escalated request (contains the pattern)
+              const isEscalationMsg =
+                msg.role === "assistant" &&
+                escalation !== null &&
+                (msg.content.toLowerCase().includes("under review") ||
+                  msg.content.toLowerCase().includes("pending review") ||
+                  msg.content.toLowerCase().includes("escalated for review"));
+
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  {msg.role === "assistant" && (
+                    <div className="flex items-end shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center text-sm">
+                        🏛️
+                      </div>
+                    </div>
+                  )}
+                  <div
+                    className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                      msg.role === "user"
+                        ? "bg-primary text-primary-foreground rounded-br-sm"
+                        : "bg-muted text-foreground rounded-bl-sm"
+                    }`}
+                  >
+                    {isEscalationMsg && escalation ? (
+                      <EscalationCard escalation={escalation} timestamp={msg.created_at} />
+                    ) : (
+                      <p className="whitespace-pre-wrap">{stripInlineJson(msg.content)}</p>
+                    )}
+                    <div className="flex items-center justify-between mt-1 gap-2">
+                      {msg.role === "assistant" && (
+                        <p className="text-[10px] text-muted-foreground">Atlas</p>
+                      )}
+                      <p className={`text-[10px] text-muted-foreground/60 ${msg.role === "user" ? "text-primary-foreground/60 ml-auto" : ""}`}>
+                        {formatDateTime(msg.created_at)}
+                      </p>
                     </div>
                   </div>
-                )}
-                <div
-                  className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-                    msg.role === "user"
-                      ? "bg-primary text-primary-foreground rounded-br-sm"
-                      : "bg-muted text-foreground rounded-bl-sm"
-                  }`}
-                >
-                  <p>{stripInlineJson(msg.content)}</p>
-                  {msg.role === "assistant" && (
-                    <p className="text-[10px] mt-1 text-muted-foreground">Atlas</p>
+                  {msg.role === "user" && (
+                    <div className="flex items-end shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center">
+                        <User className="w-4 h-4 text-secondary-foreground" />
+                      </div>
+                    </div>
                   )}
                 </div>
-                {msg.role === "user" && (
-                  <div className="flex items-end shrink-0">
-                    <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center">
-                      <User className="w-4 h-4 text-secondary-foreground" />
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
 
             {/* Typing indicator */}
             {loading && (

@@ -18,6 +18,7 @@ export interface McpToolCallResult {
   risk_label?: "ROUTINE" | "ESCALATE" | "BLOCK";
   risk_rationale?: string;
   policy_refs?: string[];
+  recommended_action?: string;
   raw?: unknown;
 }
 
@@ -144,9 +145,10 @@ function parseGatewayResult(
     (typeof parsed?.label === "string" ? parsed.label : undefined) ??
     (typeof reasonMeta?.label === "string" ? reasonMeta.label : undefined);
 
-  // Extract event_id from reason text (format: "Ref: evt_XXXXXXXX")
+  // Extract event_id — try top-level first, then from reason text (format: "Ref: evt_XXXXXXXX")
+  const topLevelEventId = typeof parsed?.event_id === "string" ? parsed.event_id : undefined;
   const eventIdMatch = reason.match(/Ref:\s*(evt_[a-f0-9]+)/i);
-  const eventId = eventIdMatch?.[1] ?? undefined;
+  const eventId = topLevelEventId ?? eventIdMatch?.[1] ?? undefined;
 
   // Map status to risk_label
   let riskLabel: "ROUTINE" | "ESCALATE" | "BLOCK" | undefined;
@@ -185,6 +187,7 @@ function parseGatewayResult(
     risk_label: riskLabel,
     risk_rationale: riskRationale,
     policy_refs: finalPolicyRefs,
+    recommended_action: recommendedAction,
     raw: data,
   };
 }
