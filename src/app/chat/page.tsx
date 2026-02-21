@@ -71,6 +71,11 @@ const QUICK_PROMPTS = [
 // Patterns indicating a case decision (approval/rejection/info request) from a reviewer
 const DECISION_PATTERNS = ["approved", "not approved", "additional information"];
 
+// How long (ms) to remember sent message content so Realtime echoes can be suppressed
+const CONTENT_TRACKING_TIMEOUT_MS = 5000;
+// Number of recent messages to check for content-based deduplication
+const CONTENT_DEDUP_WINDOW = 3;
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function ChatPage() {
@@ -93,6 +98,7 @@ export default function ChatPage() {
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const isSendingRef = React.useRef(false);
+  const recentlySentContentRef = React.useRef<Set<string>>(new Set());
 
   // Auth check + load user info
   React.useEffect(() => {
@@ -163,11 +169,24 @@ export default function ChatPage() {
         (payload) => {
           const newMsg = payload.new as Message;
           if (newMsg.role !== "assistant") return;
-          // Avoid duplicates from the optimistic local state added during sendMessage
+
+          // Skip messages that were just sent by our own sendMessage flow
+          if (isSendingRef.current) return;
+          if (recentlySentContentRef.current.has(newMsg.content)) {
+            recentlySentContentRef.current.delete(newMsg.content);
+            return;
+          }
+
+          // Avoid duplicates — check by id and by recent content
           setMessages((prev) => {
             if (prev.some((m) => m.id === newMsg.id)) return prev;
+            // Content-based dedup for the last few messages
+            const recent = prev.slice(-CONTENT_DEDUP_WINDOW);
+            if (recent.some((m) => m.role === "assistant" && m.content === newMsg.content)) return prev;
             return [...prev, newMsg];
           });
+
+          // Only show toast for genuine out-of-band reviewer messages
           const content = newMsg.content.toLowerCase();
           // "escalat" intentionally matches both "escalate" and "escalated"
           const reviewPatterns = ["under review", "pending review", "high risk", "escalat"];
@@ -177,8 +196,6 @@ export default function ChatPage() {
             toast.success("✅ A reviewer has responded to your request");
           } else if (reviewPatterns.some((p) => content.includes(p))) {
             toast.info("🔔 Your request is being reviewed by a human reviewer");
-          } else {
-            toast.success("✅ A reviewer has responded to your request");
           }
         }
       )
@@ -285,6 +302,10 @@ export default function ChatPage() {
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, assistantMsg]);
+
+      // Track content so the Realtime handler can skip the echo of this message
+      recentlySentContentRef.current.add(assistantMsg.content);
+      setTimeout(() => recentlySentContentRef.current.delete(assistantMsg.content), CONTENT_TRACKING_TIMEOUT_MS);
 
       // Update active conversation id (may be newly created)
       if (data.conversation_id && data.conversation_id !== activeConvId) {
