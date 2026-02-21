@@ -799,7 +799,7 @@ export default function ChatPage() {
                       {msg.role === "assistant" && (
                         <p className="text-[10px] text-muted-foreground">Atlas</p>
                       )}
-                      <p className={`text-[10px] text-muted-foreground/60 ${msg.role === "user" ? "text-primary-foreground/60 ml-auto" : ""}`}>
+                      <p className={`text-[10px] ${msg.role === "user" ? "text-primary-foreground/60 ml-auto" : "text-muted-foreground/60"}`}>
                         {formatDateTime(msg.created_at)}
                       </p>
                     </div>

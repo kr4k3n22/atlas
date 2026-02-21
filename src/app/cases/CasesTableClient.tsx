@@ -406,9 +406,7 @@ export default function CasesTableClient({ cases }: Props) {
 
   function PreviewContent({ c }: { c: CaseRow }) {
     const slaWarning = getSlaWarning(c.created_at, c.status);
-    const gatewayEventId = typeof c.tool_args_redacted?.gateway_event_id === "string"
-      ? c.tool_args_redacted.gateway_event_id
-      : null;
+    const gatewayEventId = typeof c.tool_args_redacted?.gateway_event_id === "string" ? c.tool_args_redacted.gateway_event_id : null;
 
     return (
       <div className="space-y-4">
