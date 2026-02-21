@@ -178,14 +178,52 @@ export async function applyDecision(input: {
 
   // --- Write outcome back to chat conversation ---
   const conversationId = current.tool_args_redacted?.conversation_id;
+  const gatewayEventId = current.tool_args_redacted?.gateway_event_id;
   if (typeof conversationId === "string" && conversationId) {
-    const noteText = note ? ` ${note}` : "";
-    const chatContent =
-      decision === "APPROVE"
-        ? `✅ Your request has been approved by a reviewer.${noteText}`
-        : decision === "REJECT"
-          ? `❌ Your request was not approved.${noteText}`
-          : `ℹ️ The reviewer has requested additional information.${noteText}`;
+    const decisionTs = nowIso();
+    const refId = updated.id;
+    const eventId = typeof gatewayEventId === "string" ? gatewayEventId : null;
+
+    let chatContent: string;
+    const decisionDateStr = new Date(decisionTs).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+    if (decision === "APPROVE") {
+      chatContent = [
+        `✅ **Request Approved**`,
+        ``,
+        `Your request has been reviewed and approved by ${approver}.`,
+        note ? `\n**Reviewer Notes:**\n${note}` : ``,
+        ``,
+        `📋 **Reference:** ${refId}`,
+        eventId ? `🔗 **Event ID:** ${eventId}` : ``,
+        `🕐 **Decision Time:** ${decisionDateStr}`,
+      ].filter(Boolean).join("\n");
+    } else if (decision === "REJECT") {
+      chatContent = [
+        `❌ **Request Not Approved**`,
+        ``,
+        `Your request has been reviewed and was not approved by ${approver}.`,
+        note ? `\n**Reviewer Notes:**\n${note}` : ``,
+        ``,
+        `📋 **Reference:** ${refId}`,
+        eventId ? `🔗 **Event ID:** ${eventId}` : ``,
+        `🕐 **Decision Time:** ${decisionDateStr}`,
+        ``,
+        `If you believe this decision is incorrect, you may request a review or appeal.`,
+      ].filter(Boolean).join("\n");
+    } else {
+      chatContent = [
+        `ℹ️ **Additional Information Requested**`,
+        ``,
+        `The reviewer (${approver}) has requested additional information before making a decision.`,
+        note ? `\n**Reviewer's Request:**\n${note}` : ``,
+        ``,
+        `📋 **Reference:** ${refId}`,
+        eventId ? `🔗 **Event ID:** ${eventId}` : ``,
+        `🕐 **Requested At:** ${decisionDateStr}`,
+        ``,
+        `Please respond in this conversation with the requested information.`,
+      ].filter(Boolean).join("\n");
+    }
 
     const { error: msgError } = await supabaseAdmin.from("chat_messages").insert({
       conversation_id: conversationId,
@@ -214,8 +252,6 @@ export async function applyDecision(input: {
       : decision === "REJECT"
         ? "REJECTED"
         : "NEEDS_INFO";
-
-  const gatewayEventId = current.tool_args_redacted?.gateway_event_id;
 
   notifyGatewayDecision({
     case_id: updated.id,

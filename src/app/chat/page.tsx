@@ -193,7 +193,13 @@ export default function ChatPage() {
           if (DECISION_PATTERNS.some((p) => content.includes(p))) {
             // A case decision has arrived — dismiss the escalation banner
             setEscalation(null);
-            toast.success("✅ A reviewer has responded to your request");
+            if (content.includes("not approved")) {
+              toast.error("❌ Your request was not approved");
+            } else if (content.includes("approved")) {
+              toast.success("✅ Your request has been approved");
+            } else {
+              toast.info("ℹ️ A reviewer has requested more information");
+            }
           } else if (reviewPatterns.some((p) => content.includes(p))) {
             toast.info("🔔 Your request is being reviewed by a human reviewer");
           }
@@ -226,7 +232,13 @@ export default function ChatPage() {
                 const c = m.content.toLowerCase();
                 if (DECISION_PATTERNS.some((p) => c.includes(p))) {
                   setEscalation(null);
-                  toast.success("✅ A reviewer has responded to your request");
+                  if (c.includes("not approved")) {
+                    toast.error("❌ Your request was not approved");
+                  } else if (c.includes("approved")) {
+                    toast.success("✅ Your request has been approved");
+                  } else {
+                    toast.info("ℹ️ A reviewer has requested more information");
+                  }
                   break;
                 }
               }
