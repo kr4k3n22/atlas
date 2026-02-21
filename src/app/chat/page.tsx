@@ -88,6 +88,7 @@ export default function ChatPage() {
 
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+  const isSendingRef = React.useRef(false);
 
   // Auth check + load user info
   React.useEffect(() => {
@@ -125,6 +126,8 @@ export default function ChatPage() {
       setMessages([]);
       return;
     }
+    // Don't refetch from DB if we just sent a message (messages are already in local state)
+    if (isSendingRef.current) return;
     setLoadingMsgs(true);
     fetch(`/api/chats/${activeConvId}`)
       .then((r) => r.json())
@@ -180,6 +183,7 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
+    isSendingRef.current = true;
 
     try {
       const history = messages.map((m) => ({ role: m.role, content: m.content }));
@@ -220,6 +224,7 @@ export default function ChatPage() {
         },
       ]);
     } finally {
+      isSendingRef.current = false;
       setLoading(false);
       textareaRef.current?.focus();
     }

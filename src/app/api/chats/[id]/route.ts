@@ -1,23 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-
-async function getAuthUser(req: NextRequest) {
-  const cookieHeader = req.headers.get("cookie") ?? "";
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  const { createClient } = await import("@supabase/supabase-js");
-  const client = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: false },
-    global: { headers: { cookie: cookieHeader } },
-  });
-  const { data: { user } } = await client.auth.getUser();
-  return user;
-}
+import { getAuthUser } from "@/lib/getAuthUser";
 
 // GET /api/chats/[id] — load messages for a conversation
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await getAuthUser(req);
+  const user = await getAuthUser(req.headers.get("cookie") ?? "");
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -50,7 +38,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 // DELETE /api/chats/[id] — delete a conversation
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await getAuthUser(req);
+  const user = await getAuthUser(req.headers.get("cookie") ?? "");
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
