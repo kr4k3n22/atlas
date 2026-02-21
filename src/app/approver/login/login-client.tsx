@@ -93,9 +93,6 @@ export default function ApproverLoginClient() {
                   Home
                 </Link>
                 <div className="flex gap-3">
-                  <Link className="underline text-muted-foreground" href="/login">
-                    User login
-                  </Link>
                   <Link className="underline text-muted-foreground" href="/approver/register">
                     Approver signup
                   </Link>
@@ -106,6 +103,12 @@ export default function ApproverLoginClient() {
         </Card>
 
         <p className="text-xs text-muted-foreground">This role gates /cases and /settings.</p>
+
+        <p className="text-xs text-center text-muted-foreground">
+          <Link className="underline hover:text-foreground" href="/login">
+            Looking for the citizen welfare portal? →
+          </Link>
+        </p>
       </div>
     </div>
   );
