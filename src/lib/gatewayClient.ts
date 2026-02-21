@@ -51,12 +51,8 @@ export async function notifyGatewayDecision(
         Authorization: `Bearer ${GATEWAY_SECRET}`,
       },
       body: JSON.stringify({
-        case_id: payload.case_id,
         decision: payload.decision,
-        note: payload.note ?? "",
-        approver: payload.approver ?? "hitl_reviewer",
-        timestamp: new Date().toISOString(),
-        ...(payload.event_id ? { event_id: payload.event_id } : {}),
+        ...(payload.event_id !== undefined ? { event_id: payload.event_id } : {}),
       }),
       // Don't let a slow Gateway block the UI response
       signal: AbortSignal.timeout(10_000),
