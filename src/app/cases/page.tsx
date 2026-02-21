@@ -437,6 +437,31 @@ function FreeTextPanel({ freeText, userMessage }: { freeText?: FreeText; userMes
   );
 }
 
+/** Render a string that may contain a JSON object as nicely formatted fields. */
+function JsonOrTextDisplay({ value, className }: { value: string; className?: string }) {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      const obj = parsed as Record<string, unknown>;
+      return (
+        <dl className={`mt-2 space-y-1 text-sm ${className ?? ""}`}>
+          {Object.entries(obj).map(([k, v]) => (
+            <div key={k} className="flex flex-wrap gap-x-2">
+              <dt className="font-medium text-muted-foreground capitalize shrink-0">
+                {k.replace(/_/g, " ")}:
+              </dt>
+              <dd className="break-words">{String(v)}</dd>
+            </div>
+          ))}
+        </dl>
+      );
+    }
+  } catch {
+    // Not pure JSON — fall through
+  }
+  return <pre className={`mt-2 whitespace-pre-wrap text-sm ${className ?? ""}`}>{value}</pre>;
+}
+
 // ──────────────────────────────────────────────
 // Main page
 // ──────────────────────────────────────────────
@@ -1103,7 +1128,9 @@ export default function CasesPage() {
                   {/* Risk rationale */}
                   <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
                     <div className="text-xs font-semibold text-muted-foreground">Risk rationale</div>
-                    <pre className="mt-2 whitespace-pre-wrap text-sm">{selected.risk_rationale}</pre>
+                    {selected.risk_rationale ? (
+                      <JsonOrTextDisplay value={selected.risk_rationale} />
+                    ) : null}
                   </div>
 
                   {/* Policy refs */}
@@ -1133,7 +1160,7 @@ export default function CasesPage() {
                               {new Date(a.ts).toLocaleString()} - {a.actor} - {a.action}
                             </div>
                             {a.detail ? (
-                              <div className="mt-1 whitespace-pre-wrap text-sm">{a.detail}</div>
+                              <JsonOrTextDisplay value={a.detail} />
                             ) : null}
                           </div>
                         ))}
