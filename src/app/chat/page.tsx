@@ -37,6 +37,11 @@ type Conversation = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/** Strip any embedded JSON objects from a chat message before display. */
+function stripInlineJson(text: string): string {
+  return text.replace(/\s*\{(?:[^{}]|\{[^{}]*\})*\}\s*/g, " ").replace(/\s{2,}/g, " ").trim();
+}
+
 function relativeDate(dateStr: string) {
   const now = new Date();
   const d = new Date(dateStr);
@@ -632,7 +637,7 @@ export default function ChatPage() {
                       : "bg-muted text-foreground rounded-bl-sm"
                   }`}
                 >
-                  <p>{msg.content}</p>
+                  <p>{stripInlineJson(msg.content)}</p>
                   {msg.role === "assistant" && (
                     <p className="text-[10px] mt-1 text-muted-foreground">Atlas</p>
                   )}

@@ -89,6 +89,22 @@ export async function callMcpTool(
   return parseGatewayResult(data);
 }
 
+/**
+ * Extract the first embedded JSON object from a text string.
+ * Returns the clean text (with the JSON block removed) and the parsed JSON data.
+ */
+function extractInlineJson(text: string): { cleanText: string; jsonData: Record<string, unknown> | null } {
+  const match = text.match(/\{(?:[^{}]|\{[^{}]*\})*\}/);
+  if (!match) return { cleanText: text.trim(), jsonData: null };
+  try {
+    const jsonData = JSON.parse(match[0]) as Record<string, unknown>;
+    const cleanText = text.replace(match[0], "").trim();
+    return { cleanText, jsonData };
+  } catch {
+    return { cleanText: text.trim(), jsonData: null };
+  }
+}
+
 function parseGatewayResult(
   data: Record<string, unknown>,
 ): McpToolCallResult {
@@ -113,8 +129,20 @@ function parseGatewayResult(
   // Extract risk_score
   const riskScore = typeof parsed?.risk_score === "number" ? parsed.risk_score : undefined;
 
-  // Extract reason/rationale
-  const reason = typeof parsed?.reason === "string" ? parsed.reason : "";
+  // Extract reason/rationale — strip any inline JSON metadata embedded in the string
+  const rawReason = typeof parsed?.reason === "string" ? parsed.reason : "";
+  const { cleanText: reason, jsonData: reasonMeta } = extractInlineJson(rawReason);
+
+  // Extract structured risk metadata from top-level fields or inline JSON in reason
+  const policyRationale: string | undefined =
+    (typeof parsed?.policy_rationale === "string" ? parsed.policy_rationale : undefined) ??
+    (typeof reasonMeta?.policy_rationale === "string" ? reasonMeta.policy_rationale : undefined);
+  const recommendedAction: string | undefined =
+    (typeof parsed?.recommended_action === "string" ? parsed.recommended_action : undefined) ??
+    (typeof reasonMeta?.recommended_action === "string" ? reasonMeta.recommended_action : undefined);
+  const riskLabelRaw: string | undefined =
+    (typeof parsed?.label === "string" ? parsed.label : undefined) ??
+    (typeof reasonMeta?.label === "string" ? reasonMeta.label : undefined);
 
   // Extract event_id from reason text (format: "Ref: evt_XXXXXXXX")
   const eventIdMatch = reason.match(/Ref:\s*(evt_[a-f0-9]+)/i);
@@ -128,7 +156,7 @@ function parseGatewayResult(
     else riskLabel = "ROUTINE";
   }
 
-  // Build reply text
+  // Build clean reply text (reason is already stripped of inline JSON)
   let reply: string;
   if (isBlocked) {
     reply = `Your request is under review by a case officer. ${reason}`;
@@ -139,13 +167,24 @@ function parseGatewayResult(
     reply = reason || (typeof result === "string" ? result : JSON.stringify(data));
   }
 
+  // Build policy_refs from risk label if available
+  const policyRefs: string[] | undefined = riskLabelRaw ? [riskLabelRaw] : undefined;
+
+  // Build risk_rationale: prefer policy_rationale, fall back to first paragraph of reason
+  const riskRationale = policyRationale ?? (reason ? reason.split("\n\n")[0].trim() : undefined);
+
+  // Expose recommended_action in policy_refs as a fallback when no risk label is available
+  const finalPolicyRefs = policyRefs ??
+    (recommendedAction ? [recommendedAction] : undefined);
+
   return {
     reply,
     escalated: isBlocked,
     case_id: eventId,
     risk_score: riskScore,
     risk_label: riskLabel,
-    risk_rationale: reason ? reason.split("\n\n")[0].trim() : undefined,
+    risk_rationale: riskRationale,
+    policy_refs: finalPolicyRefs,
     raw: data,
   };
 }
