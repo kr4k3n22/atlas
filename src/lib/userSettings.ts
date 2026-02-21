@@ -20,6 +20,7 @@ export type UserSettings = {
   highRiskThreshold: number; // used when decisionRequiresNote involves high risk
 
   autoRefresh: AutoRefresh;
+  notificationSound: boolean;
 };
 
 export const SETTINGS_KEY = "atlas_user_settings_v1";
@@ -38,6 +39,7 @@ export const defaultSettings: UserSettings = {
   highRiskThreshold: 80,
 
   autoRefresh: "off",
+  notificationSound: true,
 };
 
 export function loadSettings(): UserSettings {
