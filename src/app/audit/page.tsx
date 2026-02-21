@@ -326,7 +326,7 @@ export default function AuditPage() {
                       <td className="px-3 py-3 align-top">
                         <span
                           className={cx(
-                            "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
+                            "inline-flex items-center gap-1.5 rounded-[3px] border px-2.5 py-1 text-[11px] font-medium tracking-wide uppercase",
                             actorBadge(e.actor)
                           )}
                         >
@@ -336,7 +336,7 @@ export default function AuditPage() {
                       <td className="px-3 py-3 align-top">
                         <span
                           className={cx(
-                            "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
+                            "inline-flex items-center gap-1.5 rounded-[3px] border px-2.5 py-1 text-[11px] font-medium tracking-wide uppercase",
                             actionBadge(e.action)
                           )}
                         >

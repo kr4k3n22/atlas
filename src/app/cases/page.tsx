@@ -110,13 +110,13 @@ function cx(...parts: Array<string | false | null | undefined>) {
 }
 
 function badgeClass(label: string) {
-  if (label === "BLOCK") return "bg-red-600/90 text-white border-red-500/60";
-  if (label === "ESCALATE") return "bg-orange-500/90 text-white border-orange-400/60";
-  if (label === "APPROVED") return "bg-green-600/90 text-white border-green-500/60";
-  if (label === "REJECTED") return "bg-red-700/90 text-white border-red-600/60";
-  if (label === "PENDING_REVIEW") return "bg-slate-700/70 text-slate-100 border-slate-600/60";
-  if (label === "NEEDS_INFO") return "bg-yellow-500/90 text-black border-yellow-400/60";
-  return "bg-slate-600/60 text-slate-100 border-slate-500/60";
+  if (label === "BLOCK") return "bg-red-600/90 text-white border-red-500/40";
+  if (label === "ESCALATE") return "bg-orange-500/90 text-white border-orange-400/40";
+  if (label === "APPROVED") return "bg-green-600/90 text-white border-green-500/40";
+  if (label === "REJECTED") return "bg-red-700/90 text-white border-red-600/40";
+  if (label === "PENDING_REVIEW") return "bg-slate-700/70 text-slate-100 border-slate-600/40";
+  if (label === "NEEDS_INFO") return "bg-yellow-500/90 text-black border-yellow-400/40";
+  return "bg-slate-600/60 text-slate-100 border-slate-500/40";
 }
 
 function normalizeSignalLevel(level?: string): SignalLevel {
@@ -206,7 +206,7 @@ function RecommendationBanner({ labels, rationale }: { labels?: CaseLabels; rati
   return (
     <div className={cx("rounded-lg border p-3", bannerBg)}>
       <div className="flex items-center gap-2">
-        <span className={cx("inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold", cls)}>
+        <span className={cx("inline-flex items-center gap-1.5 rounded-[3px] border px-2.5 py-1 text-[11px] font-medium tracking-wide uppercase", cls)}>
           {label}
         </span>
         <span className="text-xs font-semibold text-muted-foreground">MCP Brain Recommendation</span>
@@ -264,7 +264,7 @@ function HarmSignalsPanel({ signals }: { signals?: HarmRightsSignals }) {
     <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
       <div className="text-xs font-semibold text-muted-foreground">Harm / Rights Signals</div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <span className={cx("inline-flex items-center rounded-full border px-2 py-0.5 text-xs", cls)}>
+        <span className={cx("inline-flex items-center gap-1.5 rounded-[3px] border px-2.5 py-1 text-[11px] font-medium tracking-wide uppercase", cls)}>
           {label}
         </span>
         {signals.signal_source && (
@@ -828,7 +828,7 @@ export default function CasesPage() {
                           <td className="px-3 py-3 align-top">
                             <span
                               className={cx(
-                                "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
+                                "inline-flex items-center gap-1.5 rounded-[3px] border px-2.5 py-1 text-[11px] font-medium tracking-wide uppercase",
                                 badgeClass(c.status)
                               )}
                             >
@@ -838,17 +838,20 @@ export default function CasesPage() {
                           <td className="px-3 py-3 align-top">
                             <span
                               className={cx(
-                                "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
+                                "inline-flex items-center gap-1.5 rounded-[3px] border px-2.5 py-1 text-[11px] font-medium tracking-wide uppercase",
                                 badgeClass(c.risk_label)
                               )}
                             >
-                              {c.risk_label} ({Math.round(c.risk_score)})
+                              {c.risk_label}
+                              <span className="rounded-[2px] bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none">
+                                {Math.round(c.risk_score)}
+                              </span>
                             </span>
                           </td>
                           <td className="px-3 py-3 align-top">
                             <span
                               className={cx(
-                                "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
+                                "inline-flex items-center gap-1.5 rounded-[3px] border px-2.5 py-1 text-[11px] font-medium tracking-wide uppercase",
                                 actionInfo.cls
                               )}
                             >
@@ -858,7 +861,7 @@ export default function CasesPage() {
                           <td className="px-3 py-3 align-top">
                             <span
                               className={cx(
-                                "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
+                                "inline-flex items-center gap-1.5 rounded-[3px] border px-2.5 py-1 text-[11px] font-medium tracking-wide uppercase",
                                 signalInfo.cls
                               )}
                             >
@@ -909,7 +912,7 @@ export default function CasesPage() {
                   <div className="flex items-center gap-2">
                     <span
                       className={cx(
-                        "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
+                        "inline-flex items-center gap-1.5 rounded-[3px] border px-2.5 py-1 text-[11px] font-medium tracking-wide uppercase",
                         badgeClass(selected.status)
                       )}
                     >
@@ -917,11 +920,14 @@ export default function CasesPage() {
                     </span>
                     <span
                       className={cx(
-                        "inline-flex items-center rounded-full border px-2 py-0.5 text-xs",
+                        "inline-flex items-center gap-1.5 rounded-[3px] border px-2.5 py-1 text-[11px] font-medium tracking-wide uppercase",
                         badgeClass(selected.risk_label)
                       )}
                     >
-                      {selected.risk_label} ({Math.round(selected.risk_score)})
+                      {selected.risk_label}
+                      <span className="rounded-[2px] bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none">
+                        {Math.round(selected.risk_score)}
+                      </span>
                     </span>
                   </div>
                 </div>
