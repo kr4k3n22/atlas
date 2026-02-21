@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type Message = { role: "user" | "assistant"; content: string };
 
 interface ChatRequest {
   message: string;
   history?: Message[];
+  conversation_id?: string;
 }
+
+const MAX_CONVERSATION_TITLE_LENGTH = 60;
 
 const ESCALATION_PATTERNS = /\b(submit|file|apply now|start my claim|register my claim)\b/i;
 
@@ -43,7 +47,7 @@ const FALLBACK_RESPONSES: Array<{ pattern: RegExp; reply: string; escalate?: boo
   {
     pattern: /\b(hello|hi|hey|good morning|good afternoon|start|help)\b/i,
     reply:
-      "Hello! I'm Alex, your welfare services assistant. I can help you with:\n\n• Unemployment benefit applications\n• Checking your claim status\n• Understanding eligibility criteria\n• Document requirements\n• Appeals and reconsiderations\n\nHow can I assist you today?",
+      "Hello! I'm Atlas, your welfare services assistant. I can help you with:\n\n• Unemployment benefit applications\n• Checking your claim status\n• Understanding eligibility criteria\n• Document requirements\n• Appeals and reconsiderations\n\nHow can I assist you today?",
   },
 ];
 
@@ -69,6 +73,20 @@ function getFallbackReply(message: string): { reply: string; escalated?: boolean
   return { reply: DEFAULT_REPLY };
 }
 
+async function getAuthUser(req: NextRequest) {
+  const cookieHeader = req.headers.get("cookie") ?? "";
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseAnonKey) return null;
+  const { createClient } = await import("@supabase/supabase-js");
+  const client = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: false },
+    global: { headers: { cookie: cookieHeader } },
+  });
+  const { data: { user } } = await client.auth.getUser();
+  return user;
+}
+
 export async function POST(req: NextRequest) {
   let body: ChatRequest;
 
@@ -78,10 +96,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { message, history } = body;
+  const { message, history, conversation_id: incomingConvId } = body;
 
   if (!message || typeof message !== "string") {
     return NextResponse.json({ error: "Missing message" }, { status: 400 });
+  }
+
+  const user = await getAuthUser(req);
+
+  // Resolve / create conversation for persistence
+  let conversationId = incomingConvId ?? null;
+  if (user) {
+    if (!conversationId) {
+      const title = message.slice(0, MAX_CONVERSATION_TITLE_LENGTH) || "New conversation";
+      const { data } = await supabaseAdmin
+        .from("conversations")
+        .insert({ user_id: user.id, title })
+        .select("id")
+        .single();
+      conversationId = data?.id ?? null;
+    }
+
+    if (conversationId) {
+      await supabaseAdmin.from("chat_messages").insert({
+        conversation_id: conversationId,
+        role: "user",
+        content: message,
+      });
+    }
   }
 
   const gatewayUrl = process.env.NEXT_PUBLIC_MCP_GATEWAY_URL;
@@ -104,10 +146,25 @@ export async function POST(req: NextRequest) {
       }
 
       const data = await res.json();
+      const reply = data.reply ?? data.message ?? "No response from gateway.";
+
+      if (user && conversationId) {
+        await supabaseAdmin.from("chat_messages").insert({
+          conversation_id: conversationId,
+          role: "assistant",
+          content: reply,
+        });
+        await supabaseAdmin
+          .from("conversations")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", conversationId);
+      }
+
       return NextResponse.json({
-        reply: data.reply ?? data.message ?? "No response from gateway.",
+        reply,
         escalated: data.escalated ?? false,
         case_id: data.case_id,
+        conversation_id: conversationId,
       });
     } catch (err) {
       console.error("[chat/route] MCP gateway error, falling back:", err);
@@ -115,5 +172,18 @@ export async function POST(req: NextRequest) {
   }
 
   const result = getFallbackReply(message);
-  return NextResponse.json(result);
+
+  if (user && conversationId) {
+    await supabaseAdmin.from("chat_messages").insert({
+      conversation_id: conversationId,
+      role: "assistant",
+      content: result.reply,
+    });
+    await supabaseAdmin
+      .from("conversations")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", conversationId);
+  }
+
+  return NextResponse.json({ ...result, conversation_id: conversationId });
 }

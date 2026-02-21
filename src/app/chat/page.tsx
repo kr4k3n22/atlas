@@ -1,52 +1,95 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Shield, Send, Bot, User, Loader2, BriefcaseBusiness } from "lucide-react";
+import {
+  Shield,
+  Send,
+  Loader2,
+  User,
+  Plus,
+  Search,
+  Trash2,
+  LogOut,
+  Menu,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { createClient } from "@/lib/supabaseClient";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
-  timestamp: Date;
+  created_at: string;
 };
 
-type EscalationBanner = {
-  case_id: string;
+type Conversation = {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
 };
 
-const ASSISTANT_NAME = "Alex";
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const WELCOME_MESSAGE: Message = {
-  id: "welcome",
-  role: "assistant",
-  content:
-    `Hello, I'm ${ASSISTANT_NAME}, your welfare services assistant. I can help you with unemployment benefit applications, check your claim status, or answer questions about eligibility. How can I help you today?`,
-  timestamp: new Date(),
-};
-
-function formatTime(date: Date) {
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+function relativeDate(dateStr: string) {
+  const now = new Date();
+  const d = new Date(dateStr);
+  const diffMs = now.getTime() - d.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays <= 7) return "Previous 7 Days";
+  return "Older";
 }
+
+function groupConversations(conversations: Conversation[]) {
+  const groups: Record<string, Conversation[]> = {
+    Today: [],
+    Yesterday: [],
+    "Previous 7 Days": [],
+    Older: [],
+  };
+  for (const c of conversations) {
+    groups[relativeDate(c.updated_at)].push(c);
+  }
+  return groups;
+}
+
+const QUICK_PROMPTS = [
+  "Check my claim status",
+  "Apply for unemployment benefit",
+  "Appeal a decision",
+  "What documents do I need?",
+];
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export default function ChatPage() {
   const router = useRouter();
   const supabase = React.useMemo(() => createClient(), []);
 
-  const [displayName, setDisplayName] = React.useState<string>("");
-  const [messages, setMessages] = React.useState<Message[]>([WELCOME_MESSAGE]);
+  const [displayName, setDisplayName] = React.useState("");
+  const [conversations, setConversations] = React.useState<Conversation[]>([]);
+  const [activeConvId, setActiveConvId] = React.useState<string | null>(null);
+  const [messages, setMessages] = React.useState<Message[]>([]);
   const [input, setInput] = React.useState("");
   const [loading, setLoading] = React.useState(false);
-  const [escalation, setEscalation] = React.useState<EscalationBanner | null>(null);
+  const [loadingConvs, setLoadingConvs] = React.useState(true);
+  const [loadingMsgs, setLoadingMsgs] = React.useState(false);
+  const [search, setSearch] = React.useState("");
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [deleteConfirm, setDeleteConfirm] = React.useState<string | null>(null);
+  const [escalation, setEscalation] = React.useState<{ case_id: string } | null>(null);
 
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
-  // Auth check and user info
+  // Auth check + load user info
   React.useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       const user = data.session?.user;
@@ -58,49 +101,114 @@ export default function ChatPage() {
     });
   }, [supabase, router]);
 
-  // Auto-scroll to bottom on new messages
+  // Load conversations
+  const loadConversations = React.useCallback(async () => {
+    setLoadingConvs(true);
+    try {
+      const res = await fetch("/api/chats");
+      if (res.ok) {
+        const data = await res.json();
+        setConversations(data.conversations ?? []);
+      }
+    } finally {
+      setLoadingConvs(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
+  // Load messages for active conversation
+  React.useEffect(() => {
+    if (!activeConvId) {
+      setMessages([]);
+      return;
+    }
+    setLoadingMsgs(true);
+    fetch(`/api/chats/${activeConvId}`)
+      .then((r) => r.json())
+      .then((data) => setMessages(data.messages ?? []))
+      .catch(() => setMessages([]))
+      .finally(() => setLoadingMsgs(false));
+  }, [activeConvId]);
+
+  // Auto-scroll on new messages
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  async function sendMessage() {
-    const text = input.trim();
-    if (!text || loading) return;
+  async function startNewChat() {
+    setActiveConvId(null);
+    setMessages([]);
+    setInput("");
+    setEscalation(null);
+    setSidebarOpen(false);
+  }
 
+  async function selectConversation(id: string) {
+    setActiveConvId(id);
+    setEscalation(null);
+    setSidebarOpen(false);
+  }
+
+  async function deleteConversation(id: string) {
+    const res = await fetch(`/api/chats/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      setDeleteConfirm(null);
+      return;
+    }
+    setConversations((prev) => prev.filter((c) => c.id !== id));
+    if (activeConvId === id) {
+      setActiveConvId(null);
+      setMessages([]);
+    }
+    setDeleteConfirm(null);
+  }
+
+  async function sendMessage(text?: string) {
+    const msgText = (text ?? input).trim();
+    if (!msgText || loading) return;
+
+    const userMsgId = crypto.randomUUID();
     const userMsg: Message = {
-      id: crypto.randomUUID(),
+      id: userMsgId,
       role: "user",
-      content: text,
-      timestamp: new Date(),
+      content: msgText,
+      created_at: new Date().toISOString(),
     };
-
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
 
     try {
       const history = messages.map((m) => ({ role: m.role, content: m.content }));
-
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history }),
+        body: JSON.stringify({ message: msgText, history, conversation_id: activeConvId }),
       });
-
       const data = await res.json();
 
       const assistantMsg: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
         content: data.reply ?? "Sorry, I couldn't process your request. Please try again.",
-        timestamp: new Date(),
+        created_at: new Date().toISOString(),
       };
-
       setMessages((prev) => [...prev, assistantMsg]);
+
+      // Update active conversation id (may be newly created)
+      if (data.conversation_id && data.conversation_id !== activeConvId) {
+        setActiveConvId(data.conversation_id);
+      }
 
       if (data.escalated && data.case_id) {
         setEscalation({ case_id: data.case_id });
       }
+
+      // Refresh conversation list to show new / updated titles
+      await loadConversations();
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -108,7 +216,7 @@ export default function ChatPage() {
           id: crypto.randomUUID(),
           role: "assistant",
           content: "I'm sorry, something went wrong. Please try again in a moment.",
-          timestamp: new Date(),
+          created_at: new Date().toISOString(),
         },
       ]);
     } finally {
@@ -129,154 +237,313 @@ export default function ChatPage() {
     window.location.href = "/login";
   }
 
-  return (
-    <div className="min-h-screen flex flex-col bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-10 border-b bg-background/90 backdrop-blur">
-        <div className="mx-auto max-w-3xl px-4 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex items-center justify-center w-8 h-8 rounded bg-primary/10 text-primary shrink-0">
-              <Shield className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-semibold text-sm leading-tight truncate">Welfare Services Portal</p>
-              <p className="text-xs text-muted-foreground leading-tight truncate">
-                Powered by ATLAS Governance Framework
-              </p>
-            </div>
-          </div>
+  // Filtered conversations for sidebar search
+  const filtered = conversations.filter((c) =>
+    c.title.toLowerCase().includes(search.toLowerCase())
+  );
+  const groups = groupConversations(filtered);
+  const groupOrder = ["Today", "Yesterday", "Previous 7 Days", "Older"] as const;
 
-          <div className="flex items-center gap-2 shrink-0">
-            {displayName && (
-              <span className="hidden sm:block text-xs text-muted-foreground truncate max-w-[140px]">
-                {displayName}
-              </span>
-            )}
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/cases">
-                <BriefcaseBusiness className="w-3.5 h-3.5 mr-1.5" />
-                Cases
-              </Link>
-            </Button>
-            <Button variant="ghost" size="sm" onClick={signOut}>
-              Sign out
-            </Button>
-          </div>
+  // ─── Sidebar ─────────────────────────────────────────────────────────────
+
+  const sidebar = (
+    <aside className="flex flex-col h-full bg-background border-r border-border w-64 shrink-0">
+      {/* New chat */}
+      <div className="p-3 border-b border-border">
+        <Button className="w-full justify-start gap-2" onClick={startNewChat}>
+          <Plus className="w-4 h-4" />
+          New chat
+        </Button>
+      </div>
+
+      {/* Search */}
+      <div className="px-3 py-2 border-b border-border">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search conversations…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full bg-muted/50 text-sm rounded-md pl-8 pr-3 py-1.5 outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-primary"
+          />
         </div>
-      </header>
+      </div>
 
-      {/* Escalation banner */}
-      {escalation && (
-        <div className="mx-auto w-full max-w-3xl px-4 pt-4">
-          <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
-            <span className="text-base shrink-0">⏳</span>
-            <div>
-              <span className="font-medium">Your request has been escalated for review by a case officer.</span>
-              {" "}You'll be notified when a decision is made.
-              {escalation.case_id && (
-                <span className="ml-1 font-mono text-xs opacity-80">(Ref: {escalation.case_id})</span>
-              )}
-            </div>
-            <button
-              onClick={() => setEscalation(null)}
-              className="ml-auto shrink-0 text-amber-400/60 hover:text-amber-400 text-base leading-none"
-              aria-label="Dismiss"
-            >
-              ×
-            </button>
+      {/* Conversation list */}
+      <div className="flex-1 overflow-y-auto py-2">
+        {loadingConvs ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
           </div>
+        ) : filtered.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-8 px-4">
+            {search ? "No conversations found." : "No conversations yet."}
+          </p>
+        ) : (
+          groupOrder.map((group) =>
+            groups[group].length === 0 ? null : (
+              <div key={group} className="mb-2">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-1">
+                  {group}
+                </p>
+                {groups[group].map((conv) => (
+                  <div
+                    key={conv.id}
+                    className={`group flex items-center gap-1 px-3 py-2 cursor-pointer rounded-md mx-1 text-sm transition-colors ${
+                      activeConvId === conv.id
+                        ? "bg-primary/15 text-foreground"
+                        : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() => selectConversation(conv.id)}
+                  >
+                    <span className="flex-1 truncate">{conv.title}</span>
+                    {deleteConfirm === conv.id ? (
+                      <div className="flex gap-1 shrink-0">
+                        <button
+                          className="text-destructive text-xs hover:underline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void deleteConversation(conv.id);
+                          }}
+                        >
+                          Delete
+                        </button>
+                        <button
+                          className="text-muted-foreground text-xs hover:underline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteConfirm(null);
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="opacity-0 group-hover:opacity-100 shrink-0 text-muted-foreground hover:text-destructive transition-opacity"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteConfirm(conv.id);
+                        }}
+                        aria-label="Delete conversation"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )
+          )
+        )}
+      </div>
+
+      {/* User info */}
+      <div className="p-3 border-t border-border flex items-center gap-2">
+        <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center shrink-0">
+          <User className="w-4 h-4 text-secondary-foreground" />
+        </div>
+        <span className="flex-1 text-xs text-muted-foreground truncate">{displayName}</span>
+        <button
+          onClick={signOut}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+          aria-label="Sign out"
+        >
+          <LogOut className="w-4 h-4" />
+        </button>
+      </div>
+    </aside>
+  );
+
+  // ─── Render ───────────────────────────────────────────────────────────────
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-background">
+      {/* Desktop sidebar */}
+      <div className="hidden md:flex">{sidebar}</div>
+
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 flex md:hidden">
+          <div className="w-64 flex flex-col h-full z-50">{sidebar}</div>
+          <div
+            className="flex-1 bg-black/40"
+            onClick={() => setSidebarOpen(false)}
+          />
         </div>
       )}
 
-      {/* Chat area */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-4 py-6 space-y-4">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              {msg.role === "assistant" && (
-                <div className="flex items-end shrink-0">
-                  <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center">
-                    <Bot className="w-4 h-4 text-primary" />
-                  </div>
-                </div>
-              )}
+      {/* Main content */}
+      <div className="flex flex-col flex-1 min-w-0">
+        {/* Top bar (mobile) */}
+        <header className="md:hidden sticky top-0 z-10 flex items-center gap-3 px-4 py-3 border-b border-border bg-background/90 backdrop-blur">
+          <button onClick={() => setSidebarOpen(true)} aria-label="Open sidebar">
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-primary" />
+            <span className="font-semibold text-sm">Welfare Services Portal</span>
+          </div>
+        </header>
 
-              <div
-                className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-                  msg.role === "user"
-                    ? "bg-primary text-primary-foreground rounded-br-sm"
-                    : "bg-muted text-foreground rounded-bl-sm"
-                }`}
+        {/* Desktop header */}
+        <header className="hidden md:flex sticky top-0 z-10 items-center gap-3 px-6 py-3 border-b border-border bg-background/90 backdrop-blur">
+          <Shield className="w-4 h-4 text-primary shrink-0" />
+          <div className="min-w-0">
+            <p className="font-semibold text-sm leading-tight">Welfare Services Portal</p>
+            <p className="text-xs text-muted-foreground leading-tight">
+              Powered by ATLAS Governance Framework
+            </p>
+          </div>
+        </header>
+
+        {/* Escalation banner */}
+        {escalation && (
+          <div className="mx-auto w-full max-w-3xl px-4 pt-4">
+            <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
+              <span className="text-base shrink-0">⏳</span>
+              <div>
+                <span className="font-medium">
+                  Your request has been escalated for review by a case officer.
+                </span>{" "}
+                You'll be notified when a decision is made.
+                {escalation.case_id && (
+                  <span className="ml-1 font-mono text-xs opacity-80">
+                    (Ref: {escalation.case_id})
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => setEscalation(null)}
+                className="ml-auto shrink-0 text-amber-400/60 hover:text-amber-400 text-base leading-none"
+                aria-label="Dismiss"
               >
-                <p>{msg.content}</p>
-                <p
-                  className={`text-[10px] mt-1 ${
-                    msg.role === "user" ? "text-primary-foreground/60 text-right" : "text-muted-foreground"
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Messages area */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-3xl px-4 py-6 space-y-4">
+            {/* Empty state */}
+            {!activeConvId && messages.length === 0 && (
+              <div className="flex flex-col items-center justify-center min-h-[50vh] gap-6 text-center">
+                <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 text-2xl">
+                  🏛️
+                </div>
+                <div>
+                  <h1 className="text-2xl font-semibold mb-1">
+                    Hello{displayName ? `, ${displayName}` : ""}
+                  </h1>
+                  <p className="text-muted-foreground">How can I help you today?</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 w-full max-w-sm">
+                  {QUICK_PROMPTS.map((prompt) => (
+                    <button
+                      key={prompt}
+                      onClick={() => void sendMessage(prompt)}
+                      className="text-sm rounded-xl border border-border bg-muted/40 hover:bg-muted px-4 py-3 text-left transition-colors"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Loading messages indicator */}
+            {loadingMsgs && (
+              <div className="flex justify-center py-8">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            )}
+
+            {/* Messages */}
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                {msg.role === "assistant" && (
+                  <div className="flex items-end shrink-0">
+                    <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center text-sm">
+                      🏛️
+                    </div>
+                  </div>
+                )}
+                <div
+                  className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+                    msg.role === "user"
+                      ? "bg-primary text-primary-foreground rounded-br-sm"
+                      : "bg-muted text-foreground rounded-bl-sm"
                   }`}
                 >
-                <p>{msg.role === "assistant" ? `${ASSISTANT_NAME} · ` : ""}{formatTime(msg.timestamp)}</p>
-                </p>
+                  <p>{msg.content}</p>
+                  {msg.role === "assistant" && (
+                    <p className="text-[10px] mt-1 text-muted-foreground">Atlas</p>
+                  )}
+                </div>
+                {msg.role === "user" && (
+                  <div className="flex items-end shrink-0">
+                    <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center">
+                      <User className="w-4 h-4 text-secondary-foreground" />
+                    </div>
+                  </div>
+                )}
               </div>
+            ))}
 
-              {msg.role === "user" && (
+            {/* Typing indicator */}
+            {loading && (
+              <div className="flex gap-3 justify-start">
                 <div className="flex items-end shrink-0">
-                  <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center">
-                    <User className="w-4 h-4 text-secondary-foreground" />
+                  <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center text-sm">
+                    🏛️
                   </div>
                 </div>
-              )}
-            </div>
-          ))}
-
-          {/* Typing indicator */}
-          {loading && (
-            <div className="flex gap-3 justify-start">
-              <div className="flex items-end shrink-0">
-                <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center">
-                  <Bot className="w-4 h-4 text-primary" />
+                <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1.5">
+                  <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin" />
+                  <span className="text-xs text-muted-foreground">Atlas is typing…</span>
                 </div>
               </div>
-              <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1">
-                <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin" />
-              <span className="text-xs text-muted-foreground ml-1">{ASSISTANT_NAME} is typing…</span>
-              </div>
-            </div>
-          )}
+            )}
 
-          <div ref={bottomRef} />
-        </div>
-      </main>
-
-      {/* Input area */}
-      <div className="sticky bottom-0 border-t bg-background/90 backdrop-blur">
-        <div className="mx-auto max-w-3xl px-4 py-3">
-          <div className="flex items-end gap-2">
-            <Textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Type your message… (Enter to send, Shift+Enter for new line)"
-              disabled={loading}
-              rows={1}
-              className="resize-none min-h-[42px] max-h-36 flex-1 text-sm"
-            />
-            <Button
-              onClick={() => void sendMessage()}
-              disabled={loading || !input.trim()}
-              size="icon"
-              className="shrink-0 h-[42px] w-[42px]"
-            >
-              <Send className="w-4 h-4" />
-              <span className="sr-only">Send</span>
-            </Button>
+            <div ref={bottomRef} />
           </div>
-          <p className="text-[10px] text-muted-foreground mt-2 text-center">
-            Alex is an AI assistant. Responses are for guidance only and do not constitute legal advice.
-          </p>
+        </main>
+
+        {/* Input area */}
+        <div className="sticky bottom-0 border-t border-border bg-background/90 backdrop-blur">
+          <div className="mx-auto max-w-3xl px-4 py-3">
+            <div className="flex items-end gap-2">
+              <Textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Type your message… (Enter to send, Shift+Enter for new line)"
+                disabled={loading}
+                rows={1}
+                className="resize-none min-h-[42px] max-h-36 flex-1 text-sm"
+              />
+              <Button
+                onClick={() => void sendMessage()}
+                disabled={loading || !input.trim()}
+                size="icon"
+                className="shrink-0 h-[42px] w-[42px]"
+              >
+                <Send className="w-4 h-4" />
+                <span className="sr-only">Send</span>
+              </Button>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-2 text-center">
+              Atlas is an AI assistant. Responses are for guidance only and do not constitute legal
+              advice.
+            </p>
+          </div>
         </div>
       </div>
     </div>
