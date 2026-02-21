@@ -109,6 +109,62 @@ function extractInlineJson(text: string): { cleanText: string; jsonData: Record<
 function parseGatewayResult(
   data: Record<string, unknown>,
 ): McpToolCallResult {
+  // --- New format: Inngest event-structured response from /api/tools/call ---
+  if (
+    data?.name === "atlas/tool.execution_requested" &&
+    data?.data !== null &&
+    typeof data?.data === "object" &&
+    (data.data as Record<string, unknown>)?.pre_computed_risk !== undefined
+  ) {
+    const eventData = data.data as Record<string, unknown>;
+    const preRisk = eventData.pre_computed_risk as Record<string, unknown>;
+
+    const riskScore = typeof preRisk?.risk_score === "number" ? preRisk.risk_score : undefined;
+    const rationale = typeof preRisk?.rationale === "string" ? preRisk.rationale : "";
+    const decision = typeof preRisk?.decision === "string" ? preRisk.decision : "";
+    const eventId = typeof data?.id === "string" ? data.id : undefined;
+
+    // Extract policy_refs if present
+    const policyRefs: string[] | undefined = Array.isArray(preRisk?.policy_refs)
+      ? (preRisk.policy_refs as unknown[]).filter((r): r is string => typeof r === "string")
+      : undefined;
+
+    // Map decision to escalation state
+    const isEscalated = decision === "MANUAL_REVIEW" || decision === "BLOCK" || decision === "DENIED";
+    const isBlock = decision === "BLOCK" || decision === "DENIED";
+
+    // Map decision to risk_label
+    let riskLabel: "ROUTINE" | "ESCALATE" | "BLOCK" | undefined;
+    if (isBlock) {
+      riskLabel = "BLOCK";
+    } else if (riskScore !== undefined) {
+      if (riskScore >= 85) riskLabel = "BLOCK";
+      else if (riskScore >= 70) riskLabel = "ESCALATE";
+      else riskLabel = "ROUTINE";
+    }
+
+    // Build reply text
+    let reply: string;
+    if (isEscalated) {
+      reply = `Your request is under review by a case officer.${rationale ? ` ${rationale}` : ""}`;
+    } else {
+      reply = rationale || "Your request has been approved.";
+    }
+
+    return {
+      reply,
+      escalated: isEscalated,
+      case_id: eventId,
+      risk_score: riskScore,
+      risk_label: riskLabel,
+      risk_rationale: rationale || undefined,
+      policy_refs: policyRefs,
+      raw: data,
+    };
+  }
+
+  // --- Legacy flat format (old /api/tools/call and /api/test-tool responses) ---
+
   // The Gateway wraps /api/test-tool responses in {"result": {...}}
   // The inner result is either a string (JSON) or an object with status/risk_score/reason
   const result = (data?.result ?? data) as Record<string, unknown>;
