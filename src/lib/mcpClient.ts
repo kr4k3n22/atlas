@@ -92,83 +92,60 @@ export async function callMcpTool(
 function parseGatewayResult(
   data: Record<string, unknown>,
 ): McpToolCallResult {
-  // The Gateway returns different shapes depending on the endpoint:
-  // /api/test-tool: { "result": "PENDING REVIEW (Ref: evt_xxx)..." }
-  // /api/tools/call: { "result": "..." } or MCP-style { "content": [{ "type": "text", "text": "..." }] }
+  // The Gateway wraps /api/test-tool responses in {"result": {...}}
+  // The inner result is either a string (JSON) or an object with status/risk_score/reason
+  const result = (data?.result ?? data) as Record<string, unknown>;
 
-  // Try MCP JSON-RPC format first
-  const content = Array.isArray(data?.content)
-    ? (data.content as Array<{ type: string; text?: string }>)
-    : undefined;
-  const textFromContent = content?.find((c) => c.type === "text")?.text;
-
-  // Try nested result with content
-  const result = data?.result as Record<string, unknown> | string | undefined;
-  let textFromResult: string | undefined;
+  // Try to parse if result is a string (governance_check returns JSON.dumps())
+  let parsed = result;
   if (typeof result === "string") {
-    textFromResult = result;
-  } else if (result && typeof result === "object") {
-    const resultContent = Array.isArray(result.content)
-      ? (result.content as Array<{ type: string; text?: string }>)
-      : undefined;
-    textFromResult = resultContent?.find((c) => c.type === "text")?.text;
-    if (!textFromResult) {
-      textFromResult = (result.text as string) ?? (result.message as string);
+    try { parsed = JSON.parse(result); } catch (e) {
+      console.warn("[mcpClient] Failed to parse Gateway result string as JSON:", e);
+      parsed = {};
     }
   }
 
-  const reply =
-    textFromContent ??
-    textFromResult ??
-    (typeof data?.reply === "string" ? data.reply : undefined) ??
-    (typeof data?.message === "string" ? data.message : undefined) ??
-    (typeof data?.result === "string" ? data.result : undefined) ??
-    "No response from gateway.";
+  // Extract status
+  const status = typeof parsed?.status === "string" ? parsed.status : "";
+  const isBlocked = status === "BLOCKED_PENDING_REVIEW";
+  const isApproved = status === "APPROVED";
 
-  const replyStr = typeof reply === "string" ? reply : JSON.stringify(reply);
+  // Extract risk_score
+  const riskScore = typeof parsed?.risk_score === "number" ? parsed.risk_score : undefined;
 
-  // Check for escalation / PENDING REVIEW pattern
-  const pendingMatch = replyStr.match(/PENDING REVIEW \(Ref: ([^)]+)\)/i);
-  const escalated = !!pendingMatch || data?.escalated === true;
-  const case_id = pendingMatch?.[1] ?? (data?.case_id as string | undefined);
+  // Extract reason/rationale
+  const reason = typeof parsed?.reason === "string" ? parsed.reason : "";
 
-  // Extract risk assessment fields (from synchronous SLM scoring)
-  // The Gateway may return them at the top level or nested under `result`.
-  const nestedResult =
-    data?.result !== null && typeof data?.result === "object" && !Array.isArray(data?.result)
-      ? (data.result as Record<string, unknown>)
-      : undefined;
+  // Extract event_id from reason text (format: "Ref: evt_XXXXXXXX")
+  const eventIdMatch = reason.match(/Ref:\s*(evt_[a-f0-9]+)/i);
+  const eventId = eventIdMatch?.[1] ?? undefined;
 
-  const riskScore: number | undefined =
-    typeof data?.risk_score === "number" ? data.risk_score
-    : typeof nestedResult?.risk_score === "number" ? nestedResult.risk_score
-    : undefined;
+  // Map status to risk_label
+  let riskLabel: "ROUTINE" | "ESCALATE" | "BLOCK" | undefined;
+  if (riskScore !== undefined) {
+    if (riskScore >= 85) riskLabel = "BLOCK";
+    else if (riskScore >= 70) riskLabel = "ESCALATE";
+    else riskLabel = "ROUTINE";
+  }
 
-  const riskLabel: "ROUTINE" | "ESCALATE" | "BLOCK" | undefined =
-    typeof data?.risk_label === "string" ? data.risk_label as "ROUTINE" | "ESCALATE" | "BLOCK"
-    : typeof nestedResult?.risk_label === "string" ? nestedResult.risk_label as "ROUTINE" | "ESCALATE" | "BLOCK"
-    : undefined;
-
-  const riskRationale: string | undefined =
-    typeof data?.risk_rationale === "string" ? data.risk_rationale
-    : typeof data?.rationale === "string" ? data.rationale
-    : typeof nestedResult?.risk_rationale === "string" ? nestedResult.risk_rationale
-    : typeof nestedResult?.rationale === "string" ? nestedResult.rationale
-    : undefined;
-
-  const policyRefs: string[] | undefined =
-    Array.isArray(data?.policy_refs) ? data.policy_refs as string[]
-    : Array.isArray(nestedResult?.policy_refs) ? nestedResult.policy_refs as string[]
-    : undefined;
+  // Build reply text
+  let reply: string;
+  if (isBlocked) {
+    reply = `Your request is under review by a case officer. ${reason}`;
+  } else if (isApproved) {
+    reply = reason || "Your request has been approved.";
+  } else {
+    // Fallback: try to use reason or stringify
+    reply = reason || (typeof result === "string" ? result : JSON.stringify(data));
+  }
 
   return {
-    reply: replyStr,
-    escalated,
-    case_id,
+    reply,
+    escalated: isBlocked,
+    case_id: eventId,
     risk_score: riskScore,
     risk_label: riskLabel,
-    risk_rationale: riskRationale,
-    policy_refs: policyRefs,
+    risk_rationale: reason ? reason.split("\n\n")[0].trim() : undefined,
     raw: data,
   };
 }
