@@ -93,7 +93,12 @@ export default function ChatPage() {
   const [search, setSearch] = React.useState("");
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [deleteConfirm, setDeleteConfirm] = React.useState<string | null>(null);
-  const [escalation, setEscalation] = React.useState<{ case_id: string } | null>(null);
+  const [escalation, setEscalation] = React.useState<{
+    case_id: string;
+    risk_score?: number;
+    risk_label?: string;
+    risk_rationale?: string;
+  } | null>(null);
 
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
@@ -325,7 +330,12 @@ export default function ChatPage() {
       }
 
       if (data.escalated && data.case_id) {
-        setEscalation({ case_id: data.case_id });
+        setEscalation({
+          case_id: data.case_id,
+          risk_score: data.risk_score,
+          risk_label: data.risk_label,
+          risk_rationale: data.risk_rationale,
+        });
       }
 
       // Refresh conversation list to show new / updated titles
@@ -534,6 +544,25 @@ export default function ChatPage() {
                   <span className="ml-1 font-mono text-xs opacity-80">
                     (Ref: {escalation.case_id})
                   </span>
+                )}
+                {(escalation.risk_label || escalation.risk_score !== undefined) && (
+                  <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                    {escalation.risk_label && (
+                      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-amber-500/20 text-amber-300">
+                        {escalation.risk_label}
+                      </span>
+                    )}
+                    {escalation.risk_score !== undefined && (
+                      <span className="text-xs opacity-80">
+                        Risk Score: {escalation.risk_score}/100
+                      </span>
+                    )}
+                  </div>
+                )}
+                {escalation.risk_rationale && (
+                  <p className="mt-1 text-xs opacity-70 line-clamp-2">
+                    {escalation.risk_rationale}
+                  </p>
                 )}
               </div>
               <button
