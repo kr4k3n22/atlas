@@ -18,6 +18,7 @@ export type GatewayDecisionPayload = {
   decision: "APPROVED" | "REJECTED" | "NEEDS_INFO";
   note?: string;
   approver?: string;
+  event_id?: string;
 };
 
 /**
@@ -55,6 +56,7 @@ export async function notifyGatewayDecision(
         note: payload.note ?? "",
         approver: payload.approver ?? "hitl_reviewer",
         timestamp: new Date().toISOString(),
+        ...(payload.event_id ? { event_id: payload.event_id } : {}),
       }),
       // Don't let a slow Gateway block the UI response
       signal: AbortSignal.timeout(10_000),

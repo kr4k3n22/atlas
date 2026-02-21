@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAuthUser } from "@/lib/getAuthUser";
 import { callMcpTool } from "@/lib/mcpClient";
+import { createCase } from "@/lib/caseStore";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -170,6 +171,24 @@ export async function POST(req: NextRequest) {
           .from("conversations")
           .update({ updated_at: new Date().toISOString() })
           .eq("id", conversationId);
+      }
+
+      // If the Gateway escalated the tool call, create a case record so Sara's
+      // portal can find it and send the event_id back when she decides.
+      if (result.escalated && result.case_id) {
+        createCase({
+          user_display: user?.user_metadata?.full_name ?? user?.email ?? "Anonymous User",
+          user_message: message,
+          tool_name: toolCall.name,
+          tool_args_redacted: toolCall.arguments,
+          risk_label: "ESCALATE",
+          risk_score: 75,
+          risk_rationale: "Escalated by MCP Gateway for human review.",
+          policy_refs: [],
+          gateway_event_id: result.case_id,
+        }).catch((err) => {
+          console.error("[chat/route] Failed to create case record for escalated tool call:", err);
+        });
       }
 
       return NextResponse.json({

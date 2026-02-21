@@ -55,6 +55,7 @@ export async function createCase(input: {
   risk_score: number;
   risk_rationale: string;
   policy_refs: string[];
+  gateway_event_id?: string;
 }) {
   const id = `CASE-${nanoid(6).toUpperCase()}`;
   const created_at = nowIso();
@@ -66,7 +67,9 @@ export async function createCase(input: {
     user_display: input.user_display,
     user_message: input.user_message,
     tool_name: input.tool_name,
-    tool_args_redacted: input.tool_args_redacted,
+    tool_args_redacted: input.gateway_event_id
+      ? { ...input.tool_args_redacted, gateway_event_id: input.gateway_event_id }
+      : input.tool_args_redacted,
     risk_label: input.risk_label,
     risk_score: input.risk_score,
     risk_rationale: input.risk_rationale,
@@ -178,11 +181,14 @@ export async function applyDecision(input: {
         ? "REJECTED"
         : "NEEDS_INFO";
 
+  const gatewayEventId = current.tool_args_redacted?.gateway_event_id;
+
   notifyGatewayDecision({
     case_id: updated.id,
     decision: gatewayDecision,
     note,
     approver,
+    event_id: typeof gatewayEventId === "string" ? gatewayEventId : undefined,
   }).then((result) => {
     if (!result.ok) {
       console.warn(
