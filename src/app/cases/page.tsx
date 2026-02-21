@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ThemeInit from "@/app/_components/ThemeInit";
 import { APPROVERS } from "@/lib/approvers";
 import { createClient } from "@/lib/supabaseClient";
 import { toast } from "sonner";
+import { playNotificationChime } from "@/lib/notificationSound";
+import { loadSettings, onSettingsChange } from "@/lib/userSettings";
 
 type RiskLabel = "ROUTINE" | "ESCALATE" | "BLOCK";
 type CaseStatus = "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "NEEDS_INFO" | "CLOSED";
@@ -444,6 +446,11 @@ export default function CasesPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [realtimeStatus, setRealtimeStatus] = useState<
+    "SUBSCRIBED" | "CHANNEL_ERROR" | "TIMED_OUT" | "CLOSED" | "connecting"
+  >("connecting");
+  const realtimeStatusRef = useRef(realtimeStatus);
+  const soundEnabledRef = useRef(loadSettings().notificationSound);
 
   const [tab, setTab] = useState<"PENDING" | "APPROVED" | "REJECTED" | "ALL">("PENDING");
   const [q, setQ] = useState("");
@@ -525,6 +532,13 @@ export default function CasesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Keep the sound-enabled ref in sync when the user changes settings.
+  useEffect(() => {
+    return onSettingsChange(() => {
+      soundEnabledRef.current = loadSettings().notificationSound;
+    });
+  }, []);
+
   // NOTE: Realtime requires the `approval_queue` table to have Realtime enabled
   // in the Supabase dashboard (Database → Replication → Realtime).
   useEffect(() => {
@@ -544,10 +558,12 @@ export default function CasesPage() {
             toast.error("🚨 New high-risk case requires review", {
               description: `Case ${newCase.id} has been flagged as BLOCK`,
             });
+            if (soundEnabledRef.current) playNotificationChime(true);
           } else if (newCase.risk_label === "ESCALATE") {
             toast.warning("⚠️ New escalated case requires review", {
               description: `Case ${newCase.id} has been escalated`,
             });
+            if (soundEnabledRef.current) playNotificationChime(false);
           }
         }
       )
@@ -569,9 +585,47 @@ export default function CasesPage() {
           setAll((prev) => prev.filter((c) => c.id !== deleted.id));
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        setRealtimeStatus(
+          status as "SUBSCRIBED" | "CHANNEL_ERROR" | "TIMED_OUT" | "CLOSED"
+        );
+        realtimeStatusRef.current = status as
+          | "SUBSCRIBED"
+          | "CHANNEL_ERROR"
+          | "TIMED_OUT"
+          | "CLOSED";
+      });
+
+    // Polling fallback: when Realtime is not SUBSCRIBED, poll every 15 s.
+    const pollInterval = setInterval(() => {
+      if (realtimeStatusRef.current === "SUBSCRIBED") return;
+      fetchCases()
+        .then((data) => {
+          setAll((prev) => {
+            const existingIds = new Set(prev.map((c) => c.id));
+            const newCases = data.filter((c) => !existingIds.has(c.id));
+            if (newCases.length === 0) return prev;
+            if (soundEnabledRef.current) {
+              for (const nc of newCases) {
+                if (nc.risk_label === "BLOCK") {
+                  playNotificationChime(true);
+                  break;
+                } else if (nc.risk_label === "ESCALATE") {
+                  playNotificationChime(false);
+                  break;
+                }
+              }
+            }
+            return [...newCases, ...prev];
+          });
+        })
+        .catch(() => {
+          // Silently ignore poll errors
+        });
+    }, 15_000);
 
     return () => {
+      clearInterval(pollInterval);
       void supabase.removeChannel(channel);
     };
   }, []);
@@ -688,8 +742,18 @@ export default function CasesPage() {
             </a>
             <button
               onClick={() => void refresh()}
-              className="h-9 rounded-md border border-muted/60 bg-background/40 px-3 text-sm shadow-sm backdrop-blur hover:bg-background/60"
+              className="h-9 rounded-md border border-muted/60 bg-background/40 px-3 text-sm shadow-sm backdrop-blur hover:bg-background/60 flex items-center gap-2"
+              title={`Realtime: ${realtimeStatus}`}
             >
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${
+                  realtimeStatus === "SUBSCRIBED"
+                    ? "bg-green-500"
+                    : realtimeStatus === "connecting"
+                      ? "bg-yellow-400"
+                      : "bg-red-500"
+                }`}
+              />
               {refreshing ? "Refreshing..." : "Refresh"}
             </button>
           </div>
