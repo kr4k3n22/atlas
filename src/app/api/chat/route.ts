@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAuthUser } from "@/lib/getAuthUser";
+import { callMcpTool } from "@/lib/mcpClient";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -26,9 +27,8 @@ function extractBeneficiaryId(message: string): string | null {
   return match ? match[1].toUpperCase() : null;
 }
 
-function mapMessageToTool(message: string): ToolCall | null {
-  const beneficiaryId = extractBeneficiaryId(message);
-  if (!beneficiaryId) return null;
+function mapMessageToTool(message: string, defaultBeneficiaryId: string): ToolCall | null {
+  const beneficiaryId = extractBeneficiaryId(message) ?? defaultBeneficiaryId;
 
   if (/\b(check|status|claim status|payment status|progress|where is|my claim)\b/i.test(message)) {
     return { name: "check_payment_status", arguments: { beneficiary_id: beneficiaryId } };
@@ -40,7 +40,7 @@ function mapMessageToTool(message: string): ToolCall | null {
     return { name: "modify_welfare_record", arguments: { beneficiary_id: beneficiaryId, changes: {} } };
   }
 
-  return null;
+  return null; // General questions still fall back to regex responses
 }
 
 const FALLBACK_RESPONSES: Array<{ pattern: RegExp; reply: string; escalate?: boolean }> = [
@@ -121,6 +121,9 @@ export async function POST(req: NextRequest) {
 
   const user = await getAuthUser(req.headers.get("cookie") ?? "");
 
+  // Resolve beneficiary ID from user profile or default
+  const beneficiaryId = (user?.user_metadata?.beneficiary_id as string | undefined) ?? "BEN-ATLAS-001";
+
   // Resolve / create conversation for persistence
   let conversationId = incomingConvId ?? null;
   if (user) {
@@ -146,46 +149,22 @@ export async function POST(req: NextRequest) {
   const gatewayUrl = process.env.NEXT_PUBLIC_MCP_GATEWAY_URL;
   const gatewaySecret = process.env.GATEWAY_SHARED_SECRET;
 
-  const toolCall = mapMessageToTool(message);
+  const toolCall = mapMessageToTool(message, beneficiaryId);
 
-  if (gatewayUrl && toolCall) {
+  if (gatewayUrl && gatewaySecret && toolCall) {
     try {
-      const mcpPayload = {
-        jsonrpc: "2.0",
-        id: crypto.randomUUID(),
-        method: "tools/call",
-        params: {
-          name: toolCall.name,
-          arguments: toolCall.arguments,
-        },
-      };
-
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (gatewaySecret) {
-        headers["Authorization"] = `Bearer ${gatewaySecret}`;
-      }
-
-      const res = await fetch(`${gatewayUrl}/mcp/messages`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(mcpPayload),
-      });
-
-      if (!res.ok) {
-        throw new Error(`Gateway responded with ${res.status}`);
-      }
-
-      const data = await res.json();
-      const textContent = data?.result?.content?.find(
-        (c: { type: string; text?: string }) => c.type === "text"
-      )?.text;
-      const reply = textContent ?? data.reply ?? data.message ?? "No response from gateway.";
+      const result = await callMcpTool(
+        gatewayUrl,
+        gatewaySecret,
+        toolCall.name,
+        toolCall.arguments,
+      );
 
       if (user && conversationId) {
         await supabaseAdmin.from("chat_messages").insert({
           conversation_id: conversationId,
           role: "assistant",
-          content: reply,
+          content: result.reply,
         });
         await supabaseAdmin
           .from("conversations")
@@ -194,13 +173,13 @@ export async function POST(req: NextRequest) {
       }
 
       return NextResponse.json({
-        reply,
-        escalated: data.escalated ?? false,
-        case_id: data.case_id,
+        reply: result.reply,
+        escalated: result.escalated,
+        case_id: result.case_id,
         conversation_id: conversationId,
       });
     } catch (err) {
-      console.error("[chat/route] MCP gateway error, falling back:", err);
+      console.error("[chat/route] MCP SSE gateway error, falling back:", err);
     }
   }
 
