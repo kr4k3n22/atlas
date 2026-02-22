@@ -9,6 +9,24 @@
  * 2. POST /api/test-tool — Gateway's existing test endpoint (limited mapping)
  */
 
+/**
+ * Sanitize rationale/reason text to remove internal operational details
+ * before displaying to citizens.
+ */
+export function sanitizeRationale(text: string): string {
+  return text
+    // Replace "Sara's portal" / "Sarah's portal" / "HITL dashboard" with "our review team"
+    .replace(/\bSarah?'s\s+portal\b/gi, "our review team")
+    .replace(/\bHITL\s+dashboard\b/gi, "our review team")
+    // Replace possessive form "Sara's" / "Sarah's" with "a case officer's"
+    .replace(/\bSarah?'s\b/gi, "a case officer's")
+    // Replace non-possessive "Sara" / "Sarah" with "a case officer"
+    .replace(/\bSarah?\b/gi, "a case officer")
+    // Strip "Ref: evt_*" suffixes
+    .replace(/\s*Ref:\s*evt_[a-f0-9]+/gi, "")
+    .trim();
+}
+
 export interface McpToolCallResult {
   reply: string;
   escalated: boolean;
@@ -149,11 +167,12 @@ function parseGatewayResult(
     }
 
     // Build reply text
+    const sanitizedRationale = rationale ? sanitizeRationale(rationale) : "";
     let reply: string;
     if (isEscalated) {
-      reply = `Your request is under review by a case officer.${rationale ? ` ${rationale}` : ""}`;
+      reply = `Your request is under review by a case officer.${sanitizedRationale ? ` ${sanitizedRationale}` : ""}`;
     } else {
-      reply = rationale || "Your request has been approved.";
+      reply = sanitizedRationale || "Your request has been approved.";
     }
 
     return {
@@ -162,7 +181,7 @@ function parseGatewayResult(
       case_id: eventId,
       risk_score: riskScore,
       risk_label: riskLabel,
-      risk_rationale: rationale || undefined,
+      risk_rationale: sanitizedRationale || undefined,
       policy_refs: policyRefs,
       raw: data,
     };
@@ -210,6 +229,8 @@ function parseGatewayResult(
   const topLevelEventId = typeof parsed?.event_id === "string" ? parsed.event_id : undefined;
   const eventIdMatch = reason.match(/Ref:\s*(evt_[a-f0-9]+)/i);
   const eventId = topLevelEventId ?? eventIdMatch?.[1] ?? undefined;
+  // Strip Ref: evt_* from reason so it doesn't leak into rationale or reply
+  const cleanReason = reason.replace(/\s*Ref:\s*evt_[a-f0-9]+/gi, "").trim();
 
   // Map status to risk_label
   let riskLabel: "ROUTINE" | "ESCALATE" | "BLOCK" | undefined;
@@ -222,31 +243,31 @@ function parseGatewayResult(
   // Build clean reply text (reason is already stripped of inline JSON)
   let reply: string;
   if (isBlocked) {
-    reply = `Your request is under review by a case officer. ${reason}`;
+    reply = `Your request is under review by a case officer. ${cleanReason}`;
   } else if (isApproved) {
-    reply = reason || "Your request has been approved.";
+    reply = cleanReason || "Your request has been approved.";
   } else {
     // Fallback: try to use reason or stringify
-    reply = reason || (typeof result === "string" ? result : JSON.stringify(data));
+    reply = cleanReason || (typeof result === "string" ? result : JSON.stringify(data));
   }
 
   // Build policy_refs from risk label if available
   const policyRefs: string[] | undefined = riskLabelRaw ? [riskLabelRaw] : undefined;
 
   // Build risk_rationale: prefer policy_rationale, fall back to first paragraph of reason
-  const riskRationale = policyRationale ?? (reason ? reason.split("\n\n")[0].trim() : undefined);
+  const riskRationale = policyRationale ?? (cleanReason ? cleanReason.split("\n\n")[0].trim() : undefined);
 
   // Expose recommended_action in policy_refs as a fallback when no risk label is available
   const finalPolicyRefs = policyRefs ??
     (recommendedAction ? [recommendedAction] : undefined);
 
   return {
-    reply,
+    reply: sanitizeRationale(reply),
     escalated: isBlocked,
     case_id: eventId,
     risk_score: riskScore,
     risk_label: riskLabel,
-    risk_rationale: riskRationale,
+    risk_rationale: riskRationale ? sanitizeRationale(riskRationale) : undefined,
     policy_refs: finalPolicyRefs,
     recommended_action: recommendedAction,
     raw: data,
