@@ -180,15 +180,32 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      const responseTimestamp = new Date().toISOString();
+
       if (user && conversationId) {
+        const escalationMeta =
+          result.escalated && result.case_id
+            ? {
+                escalation: {
+                  case_id: result.case_id,
+                  risk_score: result.risk_score,
+                  risk_label: result.risk_label,
+                  risk_rationale: result.risk_rationale,
+                  policy_refs: result.policy_refs,
+                  recommended_action: result.recommended_action,
+                  timestamp: responseTimestamp,
+                },
+              }
+            : undefined;
         await supabaseAdmin.from("chat_messages").insert({
           conversation_id: conversationId,
           role: "assistant",
           content: result.reply,
+          ...(escalationMeta ? { metadata: escalationMeta } : {}),
         });
         await supabaseAdmin
           .from("conversations")
-          .update({ updated_at: new Date().toISOString() })
+          .update({ updated_at: responseTimestamp })
           .eq("id", conversationId);
       }
 
@@ -202,7 +219,7 @@ export async function POST(req: NextRequest) {
         risk_rationale: result.risk_rationale,
         policy_refs: result.policy_refs,
         recommended_action: result.recommended_action,
-        timestamp: new Date().toISOString(),
+        timestamp: responseTimestamp,
       });
     } catch (err) {
       console.error("[chat/route] MCP SSE gateway error, falling back:", err);
