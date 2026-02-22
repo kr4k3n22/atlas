@@ -21,11 +21,24 @@ import { toast } from "sonner";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+type EscalationMeta = {
+  case_id: string;
+  risk_score?: number;
+  risk_label?: string;
+  risk_rationale?: string;
+  policy_refs?: string[];
+  recommended_action?: string;
+  timestamp?: string;
+};
+
 type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
   created_at: string;
+  metadata?: {
+    escalation?: EscalationMeta;
+  };
 };
 
 type Conversation = {
@@ -96,6 +109,9 @@ const DECISION_PATTERNS = ["approved", "not approved", "additional information"]
 const CONTENT_TRACKING_TIMEOUT_MS = 5000;
 // Number of recent messages to check for content-based deduplication
 const CONTENT_DEDUP_WINDOW = 3;
+// Delay (ms) before clearing isSendingRef after a send, giving Realtime enough
+// time to deliver the echo so it can be discarded as a duplicate.
+const REALTIME_ECHO_SUPPRESSION_DELAY_MS = 1500;
 
 // ─── EscalationCard ──────────────────────────────────────────────────────────
 
@@ -103,15 +119,7 @@ function EscalationCard({
   escalation,
   timestamp,
 }: {
-  escalation: {
-    case_id: string;
-    risk_score?: number;
-    risk_label?: string;
-    risk_rationale?: string;
-    policy_refs?: string[];
-    recommended_action?: string;
-    timestamp?: string;
-  };
+  escalation: EscalationMeta;
   timestamp: string;
 }) {
   const riskColor =
@@ -208,15 +216,7 @@ export default function ChatPage() {
   const [search, setSearch] = React.useState("");
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [deleteConfirm, setDeleteConfirm] = React.useState<string | null>(null);
-  const [escalation, setEscalation] = React.useState<{
-    case_id: string;
-    risk_score?: number;
-    risk_label?: string;
-    risk_rationale?: string;
-    policy_refs?: string[];
-    recommended_action?: string;
-    timestamp?: string;
-  } | null>(null);
+  const [escalation, setEscalation] = React.useState<EscalationMeta | null>(null);
 
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
@@ -264,7 +264,17 @@ export default function ChatPage() {
     setLoadingMsgs(true);
     fetch(`/api/chats/${activeConvId}`)
       .then((r) => r.json())
-      .then((data) => setMessages(data.messages ?? []))
+      .then((data) => {
+        const msgs: Message[] = data.messages ?? [];
+        setMessages(msgs);
+        // Restore escalation state from the most recent escalation metadata
+        const lastEscalated = msgs.slice().reverse().find(
+          (m) => m.role === "assistant" && m.metadata?.escalation,
+        );
+        if (lastEscalated?.metadata?.escalation) {
+          setEscalation(lastEscalated.metadata.escalation);
+        }
+      })
       .catch(() => setMessages([]))
       .finally(() => setLoadingMsgs(false));
   }, [activeConvId]);
@@ -430,11 +440,25 @@ export default function ChatPage() {
       });
       const data = await res.json();
 
+      const escalationData: EscalationMeta | undefined =
+        data.escalated && data.case_id
+          ? {
+              case_id: data.case_id,
+              risk_score: data.risk_score,
+              risk_label: data.risk_label,
+              risk_rationale: data.risk_rationale,
+              policy_refs: data.policy_refs,
+              recommended_action: data.recommended_action,
+              timestamp: data.timestamp ?? new Date().toISOString(),
+            }
+          : undefined;
+
       const assistantMsg: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
         content: data.reply ?? "Sorry, I couldn't process your request. Please try again.",
         created_at: new Date().toISOString(),
+        ...(escalationData ? { metadata: { escalation: escalationData } } : {}),
       };
       setMessages((prev) => [...prev, assistantMsg]);
 
@@ -447,16 +471,8 @@ export default function ChatPage() {
         setActiveConvId(data.conversation_id);
       }
 
-      if (data.escalated && data.case_id) {
-        setEscalation({
-          case_id: data.case_id,
-          risk_score: data.risk_score,
-          risk_label: data.risk_label,
-          risk_rationale: data.risk_rationale,
-          policy_refs: data.policy_refs,
-          recommended_action: data.recommended_action,
-          timestamp: data.timestamp ?? new Date().toISOString(),
-        });
+      if (escalationData) {
+        setEscalation(escalationData);
       }
 
       // Refresh conversation list to show new / updated titles
@@ -472,7 +488,9 @@ export default function ChatPage() {
         },
       ]);
     } finally {
-      isSendingRef.current = false;
+      // Delay clearing the sending flag so the Realtime echo arrives within the
+      // suppression window and is discarded as a duplicate.
+      setTimeout(() => { isSendingRef.current = false; }, REALTIME_ECHO_SUPPRESSION_DELAY_MS);
       setLoading(false);
       textareaRef.current?.focus();
     }
@@ -763,13 +781,8 @@ export default function ChatPage() {
 
             {/* Messages */}
             {messages.map((msg) => {
-              // Check if this assistant message is an escalated request (contains the pattern)
-              const isEscalationMsg =
-                msg.role === "assistant" &&
-                escalation !== null &&
-                (msg.content.toLowerCase().includes("under review") ||
-                  msg.content.toLowerCase().includes("pending review") ||
-                  msg.content.toLowerCase().includes("escalated for review"));
+              // Use persisted metadata to determine if this is an escalation message.
+              const msgEscalation = msg.role === "assistant" ? (msg.metadata?.escalation ?? null) : null;
 
               return (
                 <div
@@ -790,8 +803,8 @@ export default function ChatPage() {
                         : "bg-muted text-foreground rounded-bl-sm"
                     }`}
                   >
-                    {isEscalationMsg && escalation ? (
-                      <EscalationCard escalation={escalation} timestamp={msg.created_at} />
+                    {msgEscalation ? (
+                      <EscalationCard escalation={msgEscalation} timestamp={msg.created_at} />
                     ) : (
                       <p className="whitespace-pre-wrap">{stripInlineJson(msg.content)}</p>
                     )}
