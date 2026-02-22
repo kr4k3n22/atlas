@@ -55,7 +55,7 @@ export async function notifyGatewayDecision(
         ...(payload.event_id !== undefined ? { event_id: payload.event_id } : {}),
       }),
       // Don't let a slow Gateway block the UI response
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(60_000),
     });
 
     if (!res.ok) {
@@ -86,7 +86,7 @@ export async function checkGatewayHealth(): Promise<{
   try {
     const res = await fetch(
       `${GATEWAY_URL.replace(/\/+$/, "")}/health`,
-      { signal: AbortSignal.timeout(5_000) }
+      { signal: AbortSignal.timeout(15_000) }
     );
     return { reachable: res.ok, latencyMs: Date.now() - start };
   } catch {

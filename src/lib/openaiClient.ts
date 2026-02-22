@@ -46,7 +46,7 @@ function getClient(): OpenAI {
     }
     _client = new OpenAI({
       apiKey,
-      timeout: 30_000,
+      timeout: 60_000,
     });
   }
   return _client;

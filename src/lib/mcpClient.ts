@@ -22,6 +22,9 @@ export interface McpToolCallResult {
   raw?: unknown;
 }
 
+/** Timeout for MCP Gateway calls — long enough for the Risk SLM to respond */
+const MCP_GATEWAY_TIMEOUT_MS = 60_000;
+
 // Map our tool names to the Gateway's /api/test-tool "tool" parameter
 const TOOL_NAME_MAP: Record<string, string> = {
   check_payment_status: "check_payment",
@@ -50,6 +53,7 @@ export async function callMcpTool(
         tool: toolName,
         arguments: toolArguments,
       }),
+      signal: AbortSignal.timeout(MCP_GATEWAY_TIMEOUT_MS),
     });
 
     if (response.ok) {
@@ -62,9 +66,9 @@ export async function callMcpTool(
       throw new Error(`/api/tools/call failed: ${response.status} ${errorText}`);
     }
   } catch (err) {
-    // TypeError = network-level failure (e.g. DNS/connection error) — fall through to approach 2.
-    // Any other error was thrown explicitly above (non-404 HTTP status) — rethrow it.
-    if (!(err instanceof TypeError)) {
+    // TypeError = network-level failure (e.g. DNS/connection error)
+    // DOMException (AbortError) = timeout — fall through to approach 2.
+    if (!(err instanceof TypeError) && !(err instanceof DOMException && err.name === "AbortError")) {
       throw err;
     }
   }
@@ -79,6 +83,7 @@ export async function callMcpTool(
     method: "POST",
     headers,
     body: JSON.stringify({ tool: mappedTool }),
+    signal: AbortSignal.timeout(MCP_GATEWAY_TIMEOUT_MS),
   });
 
   if (!response.ok) {
