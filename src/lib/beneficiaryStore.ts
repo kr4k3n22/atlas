@@ -14,6 +14,21 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 // Types
 // ──────────────────────────────────────────────────────────────────────────────
 
+export interface HousingPayment {
+  paymentTypeCode: string;
+  amountMinor: number;
+  currencyCode: string;
+  frequencyCode: string;
+}
+
+export interface EmployerRecord {
+  id: string;
+  employerName: string;
+  statusCode: string;
+  startDate: string | null;
+  endDate: string | null;
+}
+
 export interface ClaimantProfile {
   claimantId: string;
   externalRef: string;
@@ -26,6 +41,8 @@ export interface ClaimantProfile {
   programs: string[];
   incomeSummary: ClaimantIncomeSummary | null;
   pendingDecisions: PendingDecision[];
+  housingPayments: HousingPayment[];
+  employerRecords: EmployerRecord[];
 }
 
 export interface ClaimantIncomeSummary {
@@ -65,7 +82,32 @@ export interface PendingDecision {
   decisionResultCode: string;
   decidedAt: string;
   reasonCodes: string[];
+  reasonDetails: (string | null)[];
 }
+
+// Row shapes returned by RPC functions (snake_case from PostgreSQL)
+type HousingPaymentRow = {
+  payment_type_code: string;
+  amount_minor: number;
+  currency_code: string;
+  frequency_code: string;
+};
+
+type EmployerRecordRow = {
+  id: string;
+  employer_name: string;
+  status_code: string;
+  start_date: string | null;
+  end_date: string | null;
+};
+
+type HouseholdMemberRow = {
+  claimant_id: string;
+  first_name: string;
+  last_name: string;
+  relationship_to_primary_code: string;
+  is_primary: boolean;
+};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // getClaimantProfile
@@ -81,17 +123,14 @@ export async function getClaimantProfile(
   beneficiaryId: string,
 ): Promise<ClaimantProfile | null> {
   // 1. Fetch core claimant row via external_claimant_ref
-  const { data: claimant, error: claimantError } = await supabaseAdmin
-    .schema("app" as never)
-    .from("claimant")
-    .select("id, external_claimant_ref, first_name, last_name, date_of_birth")
-    .eq("external_claimant_ref", beneficiaryId)
-    .maybeSingle();
+  const { data: claimantRows, error: claimantError } = await supabaseAdmin
+    .rpc("get_claimant_by_ref", { p_ref: beneficiaryId });
 
   if (claimantError) {
     console.error("[beneficiaryStore] Error fetching claimant:", claimantError.message);
     return null;
   }
+  const claimant = claimantRows?.[0] ?? null;
   if (!claimant) return null;
 
   const claimantId: string = claimant.id;
@@ -99,12 +138,7 @@ export async function getClaimantProfile(
 
   // 2. Most recent employment status
   const { data: empFacts } = await supabaseAdmin
-    .schema("app" as never)
-    .from("employment_fact")
-    .select("employment_status_code")
-    .eq("claimant_id", claimantId)
-    .order("last_updated_at", { ascending: false })
-    .limit(1);
+    .rpc("get_claimant_employment", { p_claimant_id: claimantId });
 
   const employmentStatus =
     empFacts?.[0]?.employment_status_code ?? null;
@@ -115,22 +149,14 @@ export async function getClaimantProfile(
 
   // 4. Most recent application
   const { data: applications } = await supabaseAdmin
-    .schema("app" as never)
-    .from("application")
-    .select("id, application_ref, status_code, submitted_at")
-    .eq("claimant_id", claimantId)
-    .order("submitted_at", { ascending: false })
-    .limit(1);
+    .rpc("get_claimant_application", { p_claimant_id: claimantId });
 
   const latestApp = applications?.[0] ?? null;
 
   let programs: string[] = [];
   if (latestApp) {
     const { data: appPrograms } = await supabaseAdmin
-      .schema("app" as never)
-      .from("application_program")
-      .select("program_type_code")
-      .eq("application_id", latestApp.id);
+      .rpc("get_application_programs", { p_application_id: latestApp.id });
 
     programs = (appPrograms ?? []).map(
       (p: { program_type_code: string }) => p.program_type_code,
@@ -145,6 +171,33 @@ export async function getClaimantProfile(
     ? await _getPendingDecisions(latestApp.id)
     : [];
 
+  // 7. Housing payments
+  const { data: housingRows } = await supabaseAdmin
+    .rpc("get_claimant_housing_payments", { p_claimant_id: claimantId });
+
+  const housingPayments: HousingPayment[] = (housingRows ?? []).map(
+    (r: HousingPaymentRow) => ({
+      paymentTypeCode: r.payment_type_code,
+      amountMinor: r.amount_minor,
+      currencyCode: r.currency_code,
+      frequencyCode: r.frequency_code,
+    }),
+  );
+
+  // 8. Employer records
+  const { data: employerRows } = await supabaseAdmin
+    .rpc("get_claimant_employer_records", { p_claimant_id: claimantId });
+
+  const employerRecords: EmployerRecord[] = (employerRows ?? []).map(
+    (r: EmployerRecordRow) => ({
+      id: r.id,
+      employerName: r.employer_name,
+      statusCode: r.status_code,
+      startDate: r.start_date ?? null,
+      endDate: r.end_date ?? null,
+    }),
+  );
+
   return {
     claimantId,
     externalRef: claimant.external_claimant_ref,
@@ -157,6 +210,8 @@ export async function getClaimantProfile(
     programs,
     incomeSummary,
     pendingDecisions,
+    housingPayments,
+    employerRecords,
   };
 }
 
@@ -177,11 +232,7 @@ export async function getClaimantIncomeSummary(
   const cutoffDate = sixMonthsAgo.toISOString().slice(0, 10);
 
   const { data, error } = await supabaseAdmin
-    .schema("app" as never)
-    .from("earned_income_period_fact")
-    .select("gross_income_minor, net_income_minor, currency_code, period_end")
-    .eq("claimant_id", claimantId)
-    .gte("period_start", cutoffDate);
+    .rpc("get_claimant_income_summary", { p_claimant_id: claimantId, p_since: cutoffDate });
 
   if (error) {
     console.error("[beneficiaryStore] Error fetching income summary:", error.message);
@@ -229,22 +280,14 @@ export async function getClaimantApplicationStatus(
   claimantId: string,
 ): Promise<ApplicationStatus | null> {
   const { data: applications, error } = await supabaseAdmin
-    .schema("app" as never)
-    .from("application")
-    .select("id, application_ref, status_code, submitted_at")
-    .eq("claimant_id", claimantId)
-    .order("submitted_at", { ascending: false })
-    .limit(1);
+    .rpc("get_claimant_application", { p_claimant_id: claimantId });
 
   if (error || !applications?.length) return null;
 
   const app = applications[0];
 
   const { data: appPrograms } = await supabaseAdmin
-    .schema("app" as never)
-    .from("application_program")
-    .select("program_type_code")
-    .eq("application_id", app.id);
+    .rpc("get_application_programs", { p_application_id: app.id });
 
   const programs = (appPrograms ?? []).map(
     (p: { program_type_code: string }) => p.program_type_code,
@@ -272,69 +315,32 @@ export async function getClaimantHouseholdContext(
   claimantId: string,
 ): Promise<HouseholdContext> {
   // Find the household this claimant belongs to
-  const { data: memberships } = await supabaseAdmin
-    .schema("app" as never)
-    .from("household_membership")
-    .select("household_id")
-    .eq("claimant_id", claimantId)
-    .order("start_date", { ascending: false })
-    .limit(1);
+  const { data: householdRows } = await supabaseAdmin
+    .rpc("get_claimant_household", { p_claimant_id: claimantId });
 
-  const householdId = memberships?.[0]?.household_id ?? null;
+  const household = householdRows?.[0] ?? null;
+  const householdId = household?.household_id ?? null;
 
   if (!householdId) {
     return { householdId: null, householdRef: null, postcode: null, town: null, members: [] };
   }
 
-  // Fetch household details
-  const { data: household } = await supabaseAdmin
-    .schema("app" as never)
-    .from("household")
-    .select("id, household_ref, postcode, town")
-    .eq("id", householdId)
-    .maybeSingle();
-
   // Fetch all members
-  const { data: allMemberships } = await supabaseAdmin
-    .schema("app" as never)
-    .from("household_membership")
-    .select("claimant_id, relationship_to_primary_code, is_primary")
-    .eq("household_id", householdId)
-    .is("end_date", null);
+  const { data: memberRows } = await supabaseAdmin
+    .rpc("get_claimant_household_members", { p_household_id: householdId });
 
-  type MembershipRow = {
-    claimant_id: string;
-    relationship_to_primary_code: string;
-    is_primary: boolean;
-  };
-
-  const memberIds = (allMemberships as MembershipRow[] ?? []).map((m) => m.claimant_id);
-  let memberDetails: Array<{ id: string; first_name: string; last_name: string }> = [];
-
-  if (memberIds.length > 0) {
-    const { data } = await supabaseAdmin
-      .schema("app" as never)
-      .from("claimant")
-      .select("id, first_name, last_name")
-      .in("id", memberIds);
-    memberDetails = (data ?? []) as typeof memberDetails;
-  }
-
-  const members: HouseholdMember[] = (allMemberships as MembershipRow[] ?? []).map((m) => {
-    const detail = memberDetails.find((d) => d.id === m.claimant_id);
-    return {
-      claimantId: m.claimant_id,
-      fullName: detail ? `${detail.first_name} ${detail.last_name}` : "Unknown",
-      relationshipToPrimary: m.relationship_to_primary_code,
-      isPrimary: m.is_primary,
-    };
-  });
+  const members: HouseholdMember[] = (memberRows as HouseholdMemberRow[] ?? []).map((m) => ({
+    claimantId: m.claimant_id,
+    fullName: `${m.first_name} ${m.last_name}`,
+    relationshipToPrimary: m.relationship_to_primary_code,
+    isPrimary: m.is_primary,
+  }));
 
   return {
     householdId,
-    householdRef: household?.household_ref ?? null,
-    postcode: household?.postcode ?? null,
-    town: household?.town ?? null,
+    householdRef: household.household_ref ?? null,
+    postcode: household.postcode ?? null,
+    town: household.town ?? null,
     members,
   };
 }
@@ -345,30 +351,25 @@ export async function getClaimantHouseholdContext(
 
 async function _getPendingDecisions(applicationId: string): Promise<PendingDecision[]> {
   const { data: decisions } = await supabaseAdmin
-    .schema("app" as never)
-    .from("decision")
-    .select("id, decision_result_code, decided_at")
-    .eq("application_id", applicationId)
-    .order("decided_at", { ascending: false })
-    .limit(5);
+    .rpc("get_application_decisions", { p_application_id: applicationId });
 
   if (!decisions?.length) return [];
 
   type DecisionRow = { id: string; decision_result_code: string; decided_at: string };
+  type ReasonRow = { reason_code: string; detail: string | null };
   const results: PendingDecision[] = [];
 
   for (const dec of decisions as DecisionRow[]) {
     const { data: reasons } = await supabaseAdmin
-      .schema("app" as never)
-      .from("decision_reason")
-      .select("reason_code")
-      .eq("decision_id", dec.id);
+      .rpc("get_decision_reasons", { p_decision_id: dec.id });
 
+    const reasonRows = (reasons ?? []) as ReasonRow[];
     results.push({
       decisionId: dec.id,
       decisionResultCode: dec.decision_result_code,
       decidedAt: dec.decided_at,
-      reasonCodes: (reasons ?? []).map((r: { reason_code: string }) => r.reason_code),
+      reasonCodes: reasonRows.map((r) => r.reason_code),
+      reasonDetails: reasonRows.map((r) => r.detail ?? null),
     });
   }
 
@@ -398,8 +399,9 @@ export function formatMinorAmount(minorUnits: number, currencyCode = "GBP"): str
 export function buildProfileContext(profile: ClaimantProfile): string {
   const lines: string[] = [
     `Claimant: ${profile.fullName} (ref: ${profile.externalRef})`,
+    `Date of birth: ${profile.dateOfBirth ?? "not yet recorded"}`,
     `Household size: ${profile.householdSize}`,
-    `Employment status: ${profile.employmentStatus ?? "unknown"}`,
+    `Employment status: ${profile.employmentStatus ?? "not yet recorded"}`,
   ];
 
   if (profile.currentApplicationRef) {
@@ -417,16 +419,47 @@ export function buildProfileContext(profile: ClaimantProfile): string {
       profile.incomeSummary.totalGross6mMinor,
       profile.incomeSummary.currencyCode,
     );
+    const net = profile.incomeSummary.totalNet6mMinor != null
+      ? formatMinorAmount(profile.incomeSummary.totalNet6mMinor, profile.incomeSummary.currencyCode)
+      : "not yet recorded";
     lines.push(`Income (last 6 months, gross): ${gross}`);
+    lines.push(`Income (last 6 months, net): ${net}`);
+    lines.push(`Income periods recorded: ${profile.incomeSummary.periodCount}`);
+  } else {
+    lines.push("Income (last 6 months): not yet recorded");
+  }
+
+  if (profile.employerRecords.length > 0) {
+    lines.push("Employer records:");
+    for (const emp of profile.employerRecords) {
+      const period = emp.startDate
+        ? `${emp.startDate} – ${emp.endDate ?? "present"}`
+        : "dates not recorded";
+      lines.push(`  - ${emp.employerName} (${emp.statusCode}): ${period}`);
+    }
+  }
+
+  if (profile.housingPayments.length > 0) {
+    lines.push("Housing payments:");
+    for (const hp of profile.housingPayments) {
+      const amount = formatMinorAmount(hp.amountMinor, hp.currencyCode);
+      lines.push(`  - ${hp.paymentTypeCode}: ${amount} (${hp.frequencyCode})`);
+    }
+  } else {
+    lines.push("Housing payments: not yet recorded");
   }
 
   if (profile.pendingDecisions.length > 0) {
-    const latest = profile.pendingDecisions[0];
-    lines.push(
-      `Latest decision: ${latest.decisionResultCode} on ${latest.decidedAt.slice(0, 10)}`,
-    );
-    if (latest.reasonCodes.length > 0) {
-      lines.push(`  Reason codes: ${latest.reasonCodes.join(", ")}`);
+    lines.push("Decisions:");
+    for (const dec of profile.pendingDecisions) {
+      lines.push(`  - ${dec.decisionResultCode} on ${dec.decidedAt.slice(0, 10)}`);
+      if (dec.reasonCodes.length > 0) {
+        lines.push(`    Reason codes: ${dec.reasonCodes.join(", ")}`);
+      }
+      const details = dec.reasonDetails.filter(Boolean);
+      if (details.length > 0) {
+        lines.push(`    Details: ${details.join("; ")}`);
+      }
     }
   }
 
