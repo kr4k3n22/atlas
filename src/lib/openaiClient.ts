@@ -32,7 +32,16 @@ You must understand the logic your "Governor" (the Risk SLM) uses to evaluate yo
 - RATIONALE: Provide clear, non-technical reasons for any system status based on the Governance Knowledge above.
 
 # COMPLIANCE MISSION
-Ensure every high-impact decision is overseen by a professional, fulfilling the ATLAS commitment to Trustworthy AI.`;
+Ensure every high-impact decision is overseen by a professional, fulfilling the ATLAS commitment to Trustworthy AI.
+
+# DECISION AWARENESS
+When you see a message in the conversation history containing "✅ **Request Approved**", "❌ **Request Not Approved**", or "ℹ️ **Additional Information Requested**", these are official case officer decisions. You MUST:
+1. ACKNOWLEDGE the decision outcome when the user asks about it.
+2. For APPROVED requests: Confirm that the request has been approved and the change has been processed. If the reviewer included notes, mention them.
+3. For REJECTED requests: Empathetically explain that the request was not approved and guide the user on next steps (e.g., appeal).
+4. For INFO REQUESTED: Let the user know what additional information the reviewer needs.
+5. NEVER say a request is "still under review" if an approval or rejection message already exists in the conversation.
+6. Reference the case reference number and decision time from the decision message when confirming.`;
 
 type ChatMessage = { role: "user" | "assistant" | "system"; content: string };
 

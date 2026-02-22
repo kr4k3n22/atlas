@@ -87,6 +87,37 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── Step 0.5: Load persisted conversation history ───────────────────────
+  // Fetch recent messages from DB so the AI sees decision messages
+  // that were inserted server-side by caseStore.applyDecision().
+  let serverHistory: Message[] = [];
+  if (conversationId) {
+    try {
+      const { data: dbMessages } = await supabaseAdmin
+        .from("chat_messages")
+        .select("role, content")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (dbMessages && dbMessages.length > 0) {
+        // Reverse to restore chronological order (oldest → newest).
+        // The last entry is the user message we just inserted; remove it so
+        // it is not duplicated when passed as the separate `message` parameter.
+        const ordered = [...dbMessages].reverse();
+        serverHistory = (ordered as Message[])
+          .filter(m => m.role === "user" || m.role === "assistant")
+          .slice(0, -1);
+      }
+    } catch (err) {
+      console.error("[chat/route] Failed to load conversation history:", err);
+      // Fall back to client-sent history
+    }
+  }
+
+  // Use server history if available, otherwise fall back to client-sent history
+  const effectiveHistory = serverHistory.length > 0 ? serverHistory : (body.history ?? []);
+
   const gatewayUrl = process.env.NEXT_PUBLIC_MCP_GATEWAY_URL;
   const gatewaySecret = process.env.GATEWAY_SHARED_SECRET;
   const hasOpenAI = !!process.env.OPENAI_API_KEY;
@@ -116,7 +147,7 @@ export async function POST(req: NextRequest) {
 
   if (hasOpenAI) {
     try {
-      const aiResult = await chatWithTools(body.history ?? [], message, beneficiaryId, claimantContextBlock ?? undefined);
+      const aiResult = await chatWithTools(effectiveHistory, message, beneficiaryId, claimantContextBlock ?? undefined);
       if (aiResult.type === "tool_call") {
         toolCall = { name: aiResult.name, arguments: aiResult.arguments };
       } else {
@@ -179,7 +210,7 @@ export async function POST(req: NextRequest) {
         if (hasOpenAI && result.risk_label === "BLOCK") {
           try {
             result.reply = await chatCompletion(
-              body.history ?? [],
+              effectiveHistory,
               `The user requested: "${message}". The ATLAS Governor has BLOCKED this request. Reason: "${result.risk_rationale ?? result.reply}". Explain this empathetically to Alex, cite the Human Oversight requirement, and let them know their request is under review by a case officer.`,
               claimantContextBlock ?? undefined,
             );
@@ -191,7 +222,7 @@ export async function POST(req: NextRequest) {
         // Allow path — pass the MCP result to ChatGPT for a friendly confirmation.
         try {
           result.reply = await chatCompletion(
-            body.history ?? [],
+            effectiveHistory,
             `The user requested: "${message}". The ATLAS system returned the following result: "${result.reply}". Provide a friendly, concise confirmation to Alex based on this outcome.`,
             claimantContextBlock ?? undefined,
           );
@@ -249,7 +280,7 @@ export async function POST(req: NextRequest) {
   // ── Step 4: General conversation fallback (no gateway or tool matched) ───
   let reply: string;
   try {
-    reply = await chatCompletion(body.history ?? [], message, claimantContextBlock ?? undefined);
+    reply = await chatCompletion(effectiveHistory, message, claimantContextBlock ?? undefined);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[chat/route] OpenAI API error:", message);
