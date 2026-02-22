@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAuthUser } from "@/lib/getAuthUser";
 import { callMcpTool } from "@/lib/mcpClient";
 import { createCase } from "@/lib/caseStore";
-import { chatCompletion } from "@/lib/openaiClient";
+import { chatCompletion, chatWithTools } from "@/lib/openaiClient";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -88,9 +88,47 @@ export async function POST(req: NextRequest) {
 
   const gatewayUrl = process.env.NEXT_PUBLIC_MCP_GATEWAY_URL;
   const gatewaySecret = process.env.GATEWAY_SHARED_SECRET;
+  const hasOpenAI = !!process.env.OPENAI_API_KEY;
 
-  const toolCall = mapMessageToTool(message, beneficiaryId);
+  // ── Step 1: Determine intent (tool call vs direct reply) ──────────────────
+  // When OPENAI_API_KEY is set, use ChatGPT function calling to decide.
+  // Otherwise fall back to regex pattern matching.
+  let toolCall: ToolCall | null = null;
+  let openaiDirectReply: string | null = null;
 
+  if (hasOpenAI) {
+    try {
+      const aiResult = await chatWithTools(body.history ?? [], message, beneficiaryId);
+      if (aiResult.type === "tool_call") {
+        toolCall = { name: aiResult.name, arguments: aiResult.arguments };
+      } else {
+        openaiDirectReply = aiResult.content;
+      }
+    } catch (err) {
+      console.error("[chat/route] OpenAI function-calling error, falling back to regex:", err);
+      toolCall = mapMessageToTool(message, beneficiaryId);
+    }
+  } else {
+    toolCall = mapMessageToTool(message, beneficiaryId);
+  }
+
+  // ── Step 2: Direct reply (no MCP tool needed) ────────────────────────────
+  if (openaiDirectReply !== null) {
+    if (user && conversationId) {
+      await supabaseAdmin.from("chat_messages").insert({
+        conversation_id: conversationId,
+        role: "assistant",
+        content: openaiDirectReply,
+      });
+      await supabaseAdmin
+        .from("conversations")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", conversationId);
+    }
+    return NextResponse.json({ reply: openaiDirectReply, conversation_id: conversationId });
+  }
+
+  // ── Step 3: MCP Gateway tool call ────────────────────────────────────────
   if (gatewayUrl && gatewaySecret && toolCall) {
     try {
       const result = await callMcpTool(
@@ -99,18 +137,6 @@ export async function POST(req: NextRequest) {
         toolCall.name,
         toolCall.arguments,
       );
-
-      if (user && conversationId) {
-        await supabaseAdmin.from("chat_messages").insert({
-          conversation_id: conversationId,
-          role: "assistant",
-          content: result.reply,
-        });
-        await supabaseAdmin
-          .from("conversations")
-          .update({ updated_at: new Date().toISOString() })
-          .eq("id", conversationId);
-      }
 
       // If the Gateway escalated the tool call, create a case record so Sara's
       // portal can find it and send the event_id back when she decides.
@@ -129,6 +155,41 @@ export async function POST(req: NextRequest) {
         }).catch((err) => {
           console.error("[chat/route] Failed to create case record for escalated tool call:", err);
         });
+
+        // For BLOCK decisions, let ChatGPT explain empathetically using the
+        // new system prompt's governance knowledge.
+        if (hasOpenAI && result.risk_label === "BLOCK") {
+          try {
+            result.reply = await chatCompletion(
+              body.history ?? [],
+              `The user requested: "${message}". The ATLAS Governor has BLOCKED this request. Reason: "${result.risk_rationale ?? result.reply}". Explain this empathetically to Alex, cite the Human Oversight requirement, and let them know Case Officer Sarah is reviewing their file.`,
+            );
+          } catch {
+            // Keep the existing reply on error.
+          }
+        }
+      } else if (!result.escalated && hasOpenAI) {
+        // Allow path — pass the MCP result to ChatGPT for a friendly confirmation.
+        try {
+          result.reply = await chatCompletion(
+            body.history ?? [],
+            `The user requested: "${message}". The ATLAS system returned the following result: "${result.reply}". Provide a friendly, concise confirmation to Alex based on this outcome.`,
+          );
+        } catch {
+          // Keep the existing reply on error.
+        }
+      }
+
+      if (user && conversationId) {
+        await supabaseAdmin.from("chat_messages").insert({
+          conversation_id: conversationId,
+          role: "assistant",
+          content: result.reply,
+        });
+        await supabaseAdmin
+          .from("conversations")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", conversationId);
       }
 
       return NextResponse.json({
@@ -136,7 +197,6 @@ export async function POST(req: NextRequest) {
         escalated: result.escalated,
         case_id: result.case_id,
         conversation_id: conversationId,
-        // NEW — expose risk data so the AI Agent/frontend can use it
         risk_score: result.risk_score,
         risk_label: result.risk_label,
         risk_rationale: result.risk_rationale,
@@ -149,7 +209,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Fall through to ChatGPT for general conversation
+  // ── Step 4: General conversation fallback (no gateway or tool matched) ───
   let reply: string;
   try {
     reply = await chatCompletion(body.history ?? [], message);
