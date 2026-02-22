@@ -47,12 +47,17 @@ function getClient(): OpenAI {
 export async function chatCompletion(
   messages: Array<{ role: "user" | "assistant"; content: string }>,
   userMessage: string,
+  claimantContext?: string,
 ): Promise<string> {
   const client = getClient();
   const model = process.env.OPENAI_MODEL ?? "gpt-4o";
 
+  const systemContent = claimantContext
+    ? `${ATLAS_SYSTEM_PROMPT}\n\n# CLAIMANT DATA (USE THIS; DO NOT HALLUCINATE)\nOnly use the data below. If a fact is missing, ask the user to provide it. Do not make up or assume any facts.\n\n${claimantContext}`
+    : ATLAS_SYSTEM_PROMPT;
+
   const chatMessages: ChatMessage[] = [
-    { role: "system", content: ATLAS_SYSTEM_PROMPT },
+    { role: "system", content: systemContent },
     ...messages,
     { role: "user", content: userMessage },
   ];
@@ -150,12 +155,16 @@ export async function chatWithTools(
   messages: Array<{ role: "user" | "assistant"; content: string }>,
   userMessage: string,
   beneficiaryId: string,
+  claimantContext?: string,
 ): Promise<ChatWithToolsResult> {
   const client = getClient();
   const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
 
   // Inject beneficiary context so ChatGPT can populate tool arguments correctly.
-  const systemPrompt = `${ATLAS_SYSTEM_PROMPT}\n\nThe current user's beneficiary ID is: ${beneficiaryId}. Use this ID when calling tools unless the user explicitly provides a different one.`;
+  let systemPrompt = `${ATLAS_SYSTEM_PROMPT}\n\nThe current user's beneficiary ID is: ${beneficiaryId}. Use this ID when calling tools unless the user explicitly provides a different one.`;
+  if (claimantContext) {
+    systemPrompt += `\n\n# CLAIMANT DATA (USE THIS; DO NOT HALLUCINATE)\nOnly use the data below. If a fact is missing, ask the user to provide it. Do not make up or assume any facts.\n\n${claimantContext}`;
+  }
 
   const chatMessages: ChatMessage[] = [
     { role: "system", content: systemPrompt },

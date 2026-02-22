@@ -223,17 +223,107 @@ Open [http://localhost:3000](http://localhost:3000).
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Supabase project URL |
+| `SUPABASE_URL` | ✅ | Supabase project URL (server-side) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Supabase anonymous/public key |
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Supabase service role key (server-side only) |
+| `OPENAI_API_KEY` | ⬜ | OpenAI API key for function-calling and fallback responses |
+| `OPENAI_MODEL` | ⬜ | OpenAI model name (defaults to `gpt-4o`) |
 | `NEXT_PUBLIC_MCP_GATEWAY_URL` | ⬜ | Atlas-MCP-Gateway URL for live tool calls |
 | `GATEWAY_SHARED_SECRET` | ⬜ | Shared Bearer token for Gateway ↔ ATLAS auth |
 | `GATEWAY_URL` | ⬜ | Gateway URL for decision notifications |
+| `AUTH_SECRET` | ✅ | JWT signing secret for session cookies (min 16 chars) |
 
 ---
 
 ## Database Schema
 
-### `approval_queue`
+### Welfare Claims Schema (Production)
+
+The production schema is implemented as a set of idempotent SQL migration files in `supabase/migrations/`. It uses four PostgreSQL schemas to separate concerns:
+
+| Schema | Purpose |
+|--------|---------|
+| `ref` | Code/lookup tables (status codes, types, etc.) |
+| `app` | Operational fact tables (claimants, income, assets, decisions) |
+| `audit` | Append-only audit trail |
+| `reporting` | Read-only views for downstream consumers |
+
+#### Migration Files
+
+| File | Description |
+|------|-------------|
+| `001_create_policy_rules_table.sql` | Policy rules for NIST AI RMF risk scoring |
+| `002_seed_policy_rules.sql` | Seed policy rule values |
+| `003_create_chat_tables.sql` | Conversations and chat messages |
+| `004_extensions.sql` | Enable `pgcrypto` and `citext` |
+| `005_schemas.sql` | Create `ref`, `app`, `audit`, `reporting` schemas |
+| `006_code_tables.sql` | All reference/lookup code tables |
+| `007_core_entities.sql` | `claimant`, `household`, `application`, `application_program` |
+| `008_fact_tables_identity_household.sql` | Address, identity, demographic eligibility facts |
+| `009_fact_tables_income_employment.sql` | Employment, wage, earned income, benefit facts |
+| `010_fact_tables_assets_expenses_hardship.sql` | Bank accounts, assets, expenses, hardship indicators |
+| `011_evidence_tables.sql` | Document evidence, extracted fields, field links |
+| `012_rules_and_decisions.sql` | Rule catalog, decisions, rule evaluations |
+| `013_audit_tables.sql` | `audit.audit_event` table and `audit.log_row_change()` trigger |
+| `014_triggers_and_updated_at.sql` | `set_updated_at()` and audit triggers on high-impact tables |
+| `015_indexes.sql` | Indexes for common query patterns |
+| `016_seed_code_tables.sql` | All code table seed values |
+| `017_seed_test_data.sql` | Realistic UK welfare test data (5 claimants, GBP amounts) |
+| `018_views_reporting.sql` | Reporting views (`v_application_current_profile`, etc.) |
+| `019_roles.sql` | Database roles with least-privilege access |
+| `999_verification_tests.sql` | Self-validating test script (run after migrations) |
+
+#### Running Migrations
+
+Apply migrations in order using the Supabase CLI or directly via `psql`:
+
+```bash
+# Using Supabase CLI
+supabase db push
+
+# Or apply individually via psql
+psql "$DATABASE_URL" -f supabase/migrations/004_extensions.sql
+psql "$DATABASE_URL" -f supabase/migrations/005_schemas.sql
+# ... (continue in order)
+```
+
+#### Key Design Decisions
+
+- **Money as integer minor units** — all monetary amounts stored as `bigint` in pence (GBP). Never float.
+- **Code tables for all status fields** — no free-text status columns; every status references a `ref.code_*` table.
+- **Fact provenance** — every fact table includes `source_code`, `verification_status_code`, `confidence_score`, and actor metadata.
+- **Distinguishing nulls** — `unknown` / `not_applicable` / `not_provided` / `pending_verification` are explicit code values, not SQL NULL.
+- **Audit triggers** — all high-impact tables write to `audit.audit_event` via the reusable `audit.log_row_change()` trigger function.
+
+#### Adding New Code Values
+
+Insert a new row into the appropriate `ref.code_*` table:
+
+```sql
+INSERT INTO ref.code_application_status (code, label, description, sort_order)
+VALUES ('under_appeal', 'Under Appeal', 'Application is being appealed', 9);
+```
+
+#### Adding New Rule Versions
+
+Insert a new row into `app.rule_catalog` with an incremented `rule_version`:
+
+```sql
+INSERT INTO app.rule_catalog (rule_key, rule_version, program_type_code, description, effective_from)
+VALUES ('UC_INCOME_THRESHOLD', 2, 'universal_credit', 'Updated UC income threshold check', '2025-04-01');
+```
+
+### Legacy Operational Tables
+
+| Table | Description |
+|-------|-------------|
+| `approval_queue` | Stores cases for HITL review |
+| `audit_log` | Immutable audit trail |
+| `action_executions` | Records of executed actions |
+| `conversations` | Chat conversation metadata |
+| `chat_messages` | Individual chat messages |
+
+
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -339,24 +429,42 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## How It Works
 
+### Chat Agent — Claimant Data Grounding
+
+Before every AI response, the chat route queries the welfare-claims SQL schema via `src/lib/beneficiaryStore.ts` to look up the claimant's profile:
+
+1. **Profile lookup** — `getClaimantProfile(beneficiaryId)` queries `app.claimant`, joined with household, employment, income, and application data via the `external_claimant_ref` (e.g. `BEN-ATLAS-001`)
+2. **Context injection** — if a profile is found, `buildProfileContext()` formats a summary string that is injected into the OpenAI system prompt
+3. **No-hallucination instruction** — the system prompt includes: _"Only use the provided claimant data. If information is missing, ask the user to provide it. Do not make up or assume any facts."_
+4. **Missing profile** — if no records are found, the agent explicitly tells the user it cannot find their records and asks them to confirm their reference or provide identifying information
+
+The context block injected into the system prompt includes:
+- Claimant name and external reference
+- Household size
+- Current employment status
+- Total earned income (last 6 months, GBP)
+- Current application status and programmes
+- Latest decision result and reason codes
+
 ### End-to-End Flow
 
 1. **Citizen sends a message** in `/chat` → `POST /api/chat`
-2. **Message is mapped to an MCP tool call** (e.g., `check_payment_status`, `request_payment_extension`)
-3. **Tool call is sent to the MCP Gateway** which risk-scores it via a Modal SLM
-4. **If high risk**, the Gateway returns an escalation → ATLAS creates a case in `approval_queue`
-5. **The citizen sees an escalation banner** with a case reference number
-6. **An approver sees the case appear** in real-time in `/cases` (via Supabase Realtime)
-7. **The approver reviews** structured inputs, risk assessment, harm/rights signals, and policy references
-8. **The approver makes a decision** (Approve / Reject / Request Info) with a mandatory note
-9. **On Approve**: the action is executed via `actionExecutionStore`, and a confirmation message is written to the citizen's chat
-10. **On Reject/Request Info**: a notification message is written to the citizen's chat
-11. **The Gateway is notified** via an Inngest event (`atlas/sarah.decision`) to resume the paused workflow
-12. **Everything is logged** in the audit trail
+2. **Claimant profile is looked up** from the SQL database (`app.claimant` and related tables)
+3. **Message is mapped to an MCP tool call** (e.g., `check_payment_status`, `request_payment_extension`)
+4. **Tool call is sent to the MCP Gateway** which risk-scores it via a Modal SLM
+5. **If high risk**, the Gateway returns an escalation → ATLAS creates a case in `approval_queue`
+6. **The citizen sees an escalation banner** with a case reference number
+7. **An approver sees the case appear** in real-time in `/cases` (via Supabase Realtime)
+8. **The approver reviews** structured inputs, risk assessment, harm/rights signals, and policy references
+9. **The approver makes a decision** (Approve / Reject / Request Info) with a mandatory note
+10. **On Approve**: the action is executed via `actionExecutionStore`, and a confirmation message is written to the citizen's chat
+11. **On Reject/Request Info**: a notification message is written to the citizen's chat
+12. **The Gateway is notified** via an Inngest event (`atlas/sarah.decision`) to resume the paused workflow
+13. **Everything is logged** in the audit trail
 
 ### Without MCP Gateway (Fallback Mode)
 
-When the Gateway is not configured, the chat API uses regex-based pattern matching to provide informational responses about unemployment benefits, eligibility, documents, and appeals. Escalation patterns (e.g., "submit", "apply now") generate case references and create records in the approval queue.
+When the Gateway is not configured, the chat API uses regex-based pattern matching to provide informational responses about unemployment benefits, eligibility, documents, and appeals. Escalation patterns (e.g., "submit", "apply now") generate case references and create records in the approval queue. The claimant data grounding still applies in fallback mode.
 
 ---
 

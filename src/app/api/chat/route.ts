@@ -4,6 +4,7 @@ import { getAuthUser } from "@/lib/getAuthUser";
 import { callMcpTool } from "@/lib/mcpClient";
 import { createCase } from "@/lib/caseStore";
 import { chatCompletion, chatWithTools } from "@/lib/openaiClient";
+import { getClaimantProfile, buildProfileContext } from "@/lib/beneficiaryStore";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -90,6 +91,23 @@ export async function POST(req: NextRequest) {
   const gatewaySecret = process.env.GATEWAY_SHARED_SECRET;
   const hasOpenAI = !!process.env.OPENAI_API_KEY;
 
+  // ── Step 0: Look up claimant profile from the SQL database ───────────────
+  // This grounds the agent's responses in real data and prevents hallucination.
+  let claimantContextBlock: string | null = null;
+  try {
+    const profile = await getClaimantProfile(beneficiaryId);
+    if (profile) {
+      claimantContextBlock = buildProfileContext(profile);
+    } else {
+      claimantContextBlock =
+        `No records found for claimant reference ${beneficiaryId}. ` +
+        `Ask the user to confirm their claimant reference or provide identifying information.`;
+    }
+  } catch (err) {
+    console.error("[chat/route] Failed to fetch claimant profile:", err);
+    // Non-fatal — continue without grounding context
+  }
+
   // ── Step 1: Determine intent (tool call vs direct reply) ──────────────────
   // When OPENAI_API_KEY is set, use ChatGPT function calling to decide.
   // Otherwise fall back to regex pattern matching.
@@ -98,7 +116,7 @@ export async function POST(req: NextRequest) {
 
   if (hasOpenAI) {
     try {
-      const aiResult = await chatWithTools(body.history ?? [], message, beneficiaryId);
+      const aiResult = await chatWithTools(body.history ?? [], message, beneficiaryId, claimantContextBlock ?? undefined);
       if (aiResult.type === "tool_call") {
         toolCall = { name: aiResult.name, arguments: aiResult.arguments };
       } else {
@@ -163,6 +181,7 @@ export async function POST(req: NextRequest) {
             result.reply = await chatCompletion(
               body.history ?? [],
               `The user requested: "${message}". The ATLAS Governor has BLOCKED this request. Reason: "${result.risk_rationale ?? result.reply}". Explain this empathetically to Alex, cite the Human Oversight requirement, and let them know their request is under review by a case officer.`,
+              claimantContextBlock ?? undefined,
             );
           } catch {
             // Keep the existing reply on error.
@@ -174,6 +193,7 @@ export async function POST(req: NextRequest) {
           result.reply = await chatCompletion(
             body.history ?? [],
             `The user requested: "${message}". The ATLAS system returned the following result: "${result.reply}". Provide a friendly, concise confirmation to Alex based on this outcome.`,
+            claimantContextBlock ?? undefined,
           );
         } catch {
           // Keep the existing reply on error.
@@ -212,7 +232,7 @@ export async function POST(req: NextRequest) {
   // ── Step 4: General conversation fallback (no gateway or tool matched) ───
   let reply: string;
   try {
-    reply = await chatCompletion(body.history ?? [], message);
+    reply = await chatCompletion(body.history ?? [], message, claimantContextBlock ?? undefined);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[chat/route] OpenAI API error:", message);
