@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { createClient } from "@/lib/supabaseClient";
+import { sanitizeRationale } from "@/lib/mcpClient";
 import { toast } from "sonner";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -142,7 +143,7 @@ function EscalationCard({
         <span className="font-semibold text-amber-400">Request Under Review</span>
       </div>
 
-      {escalation.case_id && (
+      {escalation.case_id && !escalation.case_id.startsWith("evt_") && (
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-muted-foreground">Reference ID:</span>
           <span className="inline-flex items-center rounded border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 font-mono text-[11px] text-amber-300">
@@ -169,7 +170,7 @@ function EscalationCard({
       {escalation.risk_rationale && (
         <div>
           <div className="text-[11px] text-muted-foreground font-medium mb-0.5">Rationale</div>
-          <p className="text-xs text-foreground/80">{escalation.risk_rationale}</p>
+          <p className="text-xs text-foreground/80">{sanitizeRationale(escalation.risk_rationale)}</p>
         </div>
       )}
 
@@ -704,7 +705,7 @@ export default function ChatPage() {
                   Your request has been escalated for review by a case officer.
                 </span>{" "}
                 You&apos;ll be notified when a decision is made.
-                {escalation.case_id && (
+                {escalation.case_id && !escalation.case_id.startsWith("evt_") && (
                   <span className="ml-2 inline-flex items-center rounded border border-amber-500/40 bg-amber-500/20 px-2 py-0.5 font-mono text-[11px] text-amber-300">
                     Reference: {escalation.case_id}
                   </span>
@@ -725,7 +726,7 @@ export default function ChatPage() {
                 )}
                 {escalation.risk_rationale && (
                   <p className="mt-1 text-xs opacity-70 line-clamp-2">
-                    {escalation.risk_rationale}
+                    {sanitizeRationale(escalation.risk_rationale)}
                   </p>
                 )}
                 {escalation.timestamp && (
