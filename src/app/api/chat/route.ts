@@ -138,8 +138,8 @@ export async function POST(req: NextRequest) {
         toolCall.arguments,
       );
 
-      // If the Gateway escalated the tool call, create a case record so Sara's
-      // portal can find it and send the event_id back when she decides.
+      // If the Gateway escalated the tool call, create a case record so the
+      // case officer portal can find it and send the event_id back when they decide.
       if (result.escalated && result.case_id) {
         createCase({
           user_display: user?.user_metadata?.full_name ?? user?.email ?? "Anonymous User",
@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
           try {
             result.reply = await chatCompletion(
               body.history ?? [],
-              `The user requested: "${message}". The ATLAS Governor has BLOCKED this request. Reason: "${result.risk_rationale ?? result.reply}". Explain this empathetically to Alex, cite the Human Oversight requirement, and let them know Case Officer Sarah is reviewing their file.`,
+              `The user requested: "${message}". The ATLAS Governor has BLOCKED this request. Reason: "${result.risk_rationale ?? result.reply}". Explain this empathetically to Alex, cite the Human Oversight requirement, and let them know their request is under review by a case officer.`,
             );
           } catch {
             // Keep the existing reply on error.
