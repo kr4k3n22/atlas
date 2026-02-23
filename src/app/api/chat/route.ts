@@ -5,7 +5,7 @@ import { callMcpTool, callIntake } from "@/lib/mcpClient";
 import { createCase } from "@/lib/caseStore";
 import { chatCompletion, chatWithTools } from "@/lib/openaiClient";
 import { getClaimantProfile, buildProfileContext } from "@/lib/beneficiaryStore";
-import { buildIntakePayload, validateIntakePayload } from "@/lib/intakePayloadBuilder";
+import { buildIntakePayload, validateIntakePayload, buildContextualClaimantMessage } from "@/lib/intakePayloadBuilder";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -200,12 +200,23 @@ export async function POST(req: NextRequest) {
       const claimantProfile = await getClaimantProfile(beneficiaryId).catch(() => null);
 
       if (claimantProfile) {
+        // Derive the authoritative claimant message for gateway risk scoring.
+        // When the current message is a trivial meta-phrase (e.g. "is it working
+        // now") the tool intent was inferred from conversation history — so we
+        // use the most recent substantive user turn(s) instead. This prevents
+        // users from bypassing risk assessment by sending benign follow-up texts.
+        const { claimantMessage, isContextInferred } = buildContextualClaimantMessage(
+          effectiveHistory,
+          message,
+        );
+
         const intakePayload = buildIntakePayload({
           profile: claimantProfile,
-          userMessage: message,
+          userMessage: claimantMessage,
           history: effectiveHistory,
           toolName: toolCall.name,
           caseId: conversationId ?? undefined,
+          contextInferred: isContextInferred ? message : undefined,
         });
 
         const validation = validateIntakePayload(intakePayload);
