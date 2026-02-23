@@ -27,6 +27,17 @@ export function sanitizeRationale(text: string): string {
     .trim();
 }
 
+/**
+ * Matches rationale strings that indicate a transient system/infrastructure
+ * error rather than a genuine governance decision.
+ */
+const SYSTEM_ERROR_PATTERN =
+  /system\s+error|timeout|timed\s+out|read\s+operation/i;
+
+function isSystemError(text: string): boolean {
+  return SYSTEM_ERROR_PATTERN.test(text);
+}
+
 export interface McpToolCallResult {
   reply: string;
   escalated: boolean;
@@ -191,6 +202,17 @@ function parseGatewayResult(
 
     const riskScore = typeof data.risk_score === "number" ? data.risk_score : undefined;
     const rationale = typeof data.rationale === "string" ? data.rationale : "";
+
+    // If the gateway itself timed out or threw a system error, treat this as
+    // a transient failure — not a governance BLOCK decision.
+    if (isBlocked && isSystemError(rationale)) {
+      return {
+        reply: "Our system is temporarily busy. Please try again in a moment — your request has not been lost.",
+        escalated: false,
+        raw: data,
+      };
+    }
+
     const harmSignalsDetected = typeof data.harm_signals_detected === "boolean" ? data.harm_signals_detected : undefined;
     const decisionValidated = typeof data.decision_validated === "boolean" ? data.decision_validated : undefined;
     const proposedDecisionType = typeof data.proposed_decision_type === "string" ? data.proposed_decision_type : undefined;
@@ -319,6 +341,16 @@ function parseGatewayResult(
 
   // Extract risk_score
   const riskScore = typeof parsed?.risk_score === "number" ? parsed.risk_score : undefined;
+
+  // Check early for system errors in the legacy flat format too
+  const rawReasonEarly = typeof parsed?.reason === "string" ? parsed.reason : "";
+  if (isBlocked && isSystemError(rawReasonEarly)) {
+    return {
+      reply: "Our system is temporarily busy. Please try again in a moment — your request has not been lost.",
+      escalated: false,
+      raw: data,
+    };
+  }
 
   // Extract reason/rationale — strip any inline JSON metadata embedded in the string
   const rawReason = typeof parsed?.reason === "string" ? parsed.reason : "";
