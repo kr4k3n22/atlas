@@ -28,9 +28,19 @@ export const IntakePayloadSchema = z.object({
   structured_inputs: z.object({
     idv_status: z.string(),
     residency_status: z.string(),
-    docs_status: z.string(),
-    engagement_barriers: z.array(z.string()),
-    fraud_signals: z.array(z.string()),
+    docs_status: z.object({
+      docs_requested: z.array(z.string()).default([]),
+      docs_received: z.array(z.string()).default([]),
+      docs_quality: z.string().default("valid"),
+    }),
+    engagement_barriers: z.object({
+      language_barrier: z.string().default("none"),
+      disability_accommodation_needed: z.string().default("no"),
+    }),
+    fraud_signals: z.object({
+      identity_duplicate_match: z.string().default("none"),
+      document_tampering: z.string().default("none"),
+    }),
   }),
   free_text: z.object({
     claimant_message: z.string(),
@@ -99,41 +109,41 @@ function mapResidencyStatus(profile: ClaimantProfile): string {
 const DOC_ISSUE_REASON_CODE_PATTERN =
   /doc|evidence|upload|missing|submit/i;
 
-function mapDocsStatus(profile: ClaimantProfile): string {
-  if (profile.pendingDecisions.length === 0) return "complete";
+function mapDocsStatus(profile: ClaimantProfile): { docs_requested: string[]; docs_received: string[]; docs_quality: string } {
+  if (profile.pendingDecisions.length === 0) {
+    return { docs_requested: [], docs_received: [], docs_quality: "valid" };
+  }
 
   const allCodes = profile.pendingDecisions.flatMap((d) => d.reasonCodes);
   const hasDocIssue = allCodes.some(
     (c) =>
       DOC_ISSUE_REASON_CODE_PATTERN.test(c),
   );
-  if (hasDocIssue) return "partial";
 
   const latestCode = profile.pendingDecisions[0]?.decisionResultCode ?? "";
-  if (latestCode === "APPROVED") return "complete";
-  if (latestCode === "DEFERRED" || latestCode === "PENDING") return "pending";
-  if (latestCode === "REJECTED") return "missing";
 
-  return "pending";
+  if (hasDocIssue) {
+    return { docs_requested: ["supporting_documents"], docs_received: [], docs_quality: "missing" };
+  }
+  if (latestCode === "APPROVED") {
+    return { docs_requested: [], docs_received: ["all_documents"], docs_quality: "valid" };
+  }
+  if (latestCode === "REJECTED") {
+    return { docs_requested: ["supporting_documents"], docs_received: [], docs_quality: "invalid" };
+  }
+
+  return { docs_requested: [], docs_received: [], docs_quality: "valid" };
 }
 
-function mapEngagementBarriers(profile: ClaimantProfile): string[] {
-  const barriers: string[] = [];
-
+function mapEngagementBarriers(profile: ClaimantProfile): { language_barrier: string; disability_accommodation_needed: string } {
   const empStatus = (profile.employmentStatus ?? "").toLowerCase();
-  if (empStatus === "unemployed" || empStatus === "seeking") {
-    barriers.push("unemployed");
-  } else if (empStatus === "sick" || empStatus === "incapacitated") {
-    barriers.push("health_condition");
-  } else if (empStatus === "part_time" || empStatus === "part-time") {
-    barriers.push("part_time_employment");
-  }
+  const disabilityAccommodationNeeded =
+    empStatus === "sick" || empStatus === "incapacitated" ? "yes" : "no";
 
-  if (profile.householdSize >= 3) {
-    barriers.push("caring_responsibilities");
-  }
-
-  return barriers;
+  return {
+    language_barrier: "none",
+    disability_accommodation_needed: disabilityAccommodationNeeded,
+  };
 }
 
 /**
@@ -142,18 +152,25 @@ function mapEngagementBarriers(profile: ClaimantProfile): string[] {
  */
 const FRAUD_REASON_CODE_PATTERN = /fraud|duplicate|tamper|mismatch|inconsist/i;
 
-function mapFraudSignals(profile: ClaimantProfile): string[] {
-  const signals: string[] = [];
+function mapFraudSignals(profile: ClaimantProfile): { identity_duplicate_match: string; document_tampering: string } {
+  let identityDuplicateMatch = "none";
+  let documentTampering = "none";
 
   for (const decision of profile.pendingDecisions) {
     for (const code of decision.reasonCodes) {
-      if (FRAUD_REASON_CODE_PATTERN.test(code)) {
-        signals.push(code.toLowerCase());
+      if (/duplicate|identity/i.test(code) && FRAUD_REASON_CODE_PATTERN.test(code)) {
+        identityDuplicateMatch = code.toLowerCase();
+      }
+      if (/tamper|mismatch|inconsist/i.test(code) && FRAUD_REASON_CODE_PATTERN.test(code)) {
+        documentTampering = code.toLowerCase();
       }
     }
   }
 
-  return signals;
+  return {
+    identity_duplicate_match: identityDuplicateMatch,
+    document_tampering: documentTampering,
+  };
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

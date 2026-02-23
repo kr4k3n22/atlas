@@ -37,6 +37,11 @@ export interface McpToolCallResult {
   risk_rationale?: string;
   policy_refs?: string[];
   recommended_action?: string;
+  // NEW — /api/intake response fields
+  harm_signals_detected?: boolean;
+  decision_validated?: boolean;
+  proposed_decision_type?: string;
+  effective_decision_type?: string;
   raw?: unknown;
 }
 
@@ -167,6 +172,56 @@ function extractInlineJson(text: string): { cleanText: string; jsonData: Record<
 function parseGatewayResult(
   data: Record<string, unknown>,
 ): McpToolCallResult {
+  // --- /api/intake response format ---
+  // Identified by the presence of the `gateway_decision` field.
+  if (typeof data?.gateway_decision === "string") {
+    const gatewayDecision = data.gateway_decision as string;
+    const isBlocked = gatewayDecision === "BLOCKED_PENDING_REVIEW";
+    const isApproved = gatewayDecision === "approve";
+
+    const riskScore = typeof data.risk_score === "number" ? data.risk_score : undefined;
+    const rationale = typeof data.rationale === "string" ? data.rationale : "";
+    const harmSignalsDetected = typeof data.harm_signals_detected === "boolean" ? data.harm_signals_detected : undefined;
+    const decisionValidated = typeof data.decision_validated === "boolean" ? data.decision_validated : undefined;
+    const proposedDecisionType = typeof data.proposed_decision_type === "string" ? data.proposed_decision_type : undefined;
+    const effectiveDecisionType = typeof data.effective_decision_type === "string" ? data.effective_decision_type : undefined;
+    const caseId = typeof data.case_id === "string" ? data.case_id : undefined;
+    const eventId = typeof data.event_id === "string" ? data.event_id : caseId;
+
+    const isEscalated = isBlocked || (riskScore !== undefined && riskScore >= 70);
+
+    let riskLabel: "ROUTINE" | "ESCALATE" | "BLOCK" | undefined;
+    if (riskScore !== undefined) {
+      if (riskScore >= 85 || isBlocked) riskLabel = "BLOCK";
+      else if (riskScore >= 70) riskLabel = "ESCALATE";
+      else riskLabel = "ROUTINE";
+    }
+
+    const sanitizedRationale = rationale ? sanitizeRationale(rationale) : "";
+    let reply: string;
+    if (isBlocked) {
+      reply = `Your request is under review by a case officer.${sanitizedRationale ? ` ${sanitizedRationale}` : ""}`;
+    } else if (isApproved) {
+      reply = sanitizedRationale || "Your request has been approved.";
+    } else {
+      reply = sanitizedRationale || "Your request is being processed.";
+    }
+
+    return {
+      reply: sanitizeRationale(reply),
+      escalated: isEscalated,
+      case_id: eventId,
+      risk_score: riskScore,
+      risk_label: riskLabel,
+      risk_rationale: sanitizedRationale || undefined,
+      harm_signals_detected: harmSignalsDetected,
+      decision_validated: decisionValidated,
+      proposed_decision_type: proposedDecisionType,
+      effective_decision_type: effectiveDecisionType,
+      raw: data,
+    };
+  }
+
   // --- New format: Inngest event-structured response from /api/tools/call ---
   if (
     data?.name === "atlas/tool.execution_requested" &&

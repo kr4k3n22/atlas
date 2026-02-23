@@ -41,9 +41,9 @@ const cleanApprove: DemoScenario = {
     structured_inputs: {
       idv_status: "verified",
       residency_status: "verified",
-      docs_status: "complete",
-      engagement_barriers: [],
-      fraud_signals: [],
+      docs_status: { docs_requested: [], docs_received: [], docs_quality: "valid" },
+      engagement_barriers: { language_barrier: "none", disability_accommodation_needed: "no" },
+      fraud_signals: { identity_duplicate_match: "none", document_tampering: "none" },
     },
     free_text: {
       claimant_message: "I'd like to confirm my Universal Credit payment extension.",
@@ -72,9 +72,9 @@ const continueReview: DemoScenario = {
     structured_inputs: {
       idv_status: "pending",
       residency_status: "pending",
-      docs_status: "partial",
-      engagement_barriers: ["unemployed"],
-      fraud_signals: [],
+      docs_status: { docs_requested: ["supporting_documents"], docs_received: [], docs_quality: "missing" },
+      engagement_barriers: { language_barrier: "none", disability_accommodation_needed: "no" },
+      fraud_signals: { identity_duplicate_match: "none", document_tampering: "none" },
     },
     free_text: {
       claimant_message: "Can you check the status of my claim? I submitted documents last week.",
@@ -103,9 +103,9 @@ const escalation: DemoScenario = {
     structured_inputs: {
       idv_status: "verified",
       residency_status: "verified",
-      docs_status: "partial",
-      engagement_barriers: ["unemployed", "caring_responsibilities"],
-      fraud_signals: [],
+      docs_status: { docs_requested: ["supporting_documents"], docs_received: [], docs_quality: "missing" },
+      engagement_barriers: { language_barrier: "none", disability_accommodation_needed: "no" },
+      fraud_signals: { identity_duplicate_match: "none", document_tampering: "none" },
     },
     free_text: {
       claimant_message:
@@ -137,9 +137,9 @@ const mismatchBlock: DemoScenario = {
     structured_inputs: {
       idv_status: "failed",
       residency_status: "not_verified",
-      docs_status: "missing",
-      engagement_barriers: [],
-      fraud_signals: ["identity_duplicate_match", "document_tampering"],
+      docs_status: { docs_requested: ["supporting_documents"], docs_received: [], docs_quality: "invalid" },
+      engagement_barriers: { language_barrier: "none", disability_accommodation_needed: "no" },
+      fraud_signals: { identity_duplicate_match: "identity_duplicate_match", document_tampering: "document_tampering" },
     },
     free_text: {
       claimant_message: "I want to update my bank details and increase my payment amount.",
