@@ -43,6 +43,41 @@ export interface McpToolCallResult {
 /** Timeout for MCP Gateway calls — long enough for the Risk SLM to respond */
 const MCP_GATEWAY_TIMEOUT_MS = 60_000;
 
+/**
+ * POST a structured welfare IntakePayload to the MCP Gateway's `/api/intake`
+ * endpoint (MCP Gateway v2.1.0).
+ *
+ * Maps the gateway response back to `McpToolCallResult` so downstream code
+ * (case creation, chat persistence) continues to work unchanged.
+ *
+ * Throws on network/non-2xx errors so the caller can fall back to
+ * `callMcpTool()`.
+ */
+export async function callIntake(
+  gatewayBaseUrl: string,
+  bearerToken: string,
+  payload: unknown,
+): Promise<McpToolCallResult> {
+  const baseUrl = gatewayBaseUrl.replace(/\/+$/, "");
+  const response = await fetch(`${baseUrl}/api/intake`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${bearerToken}`,
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(MCP_GATEWAY_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    throw new Error(`/api/intake failed: ${response.status} ${errorText}`);
+  }
+
+  const data = (await response.json()) as Record<string, unknown>;
+  return parseGatewayResult(data);
+}
+
 // Map our tool names to the Gateway's /api/test-tool "tool" parameter
 const TOOL_NAME_MAP: Record<string, string> = {
   check_payment_status: "check_payment",
