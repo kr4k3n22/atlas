@@ -225,6 +225,9 @@ export default function ChatPage() {
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const isSendingRef = React.useRef(false);
   const recentlySentContentRef = React.useRef<Set<string>>(new Set());
+  // Set to true when we programmatically set activeConvId during a send so the
+  // message-loading useEffect skips a redundant DB fetch (prevents duplicates).
+  const skipNextFetchRef = React.useRef(false);
 
   // Auth check + load user info
   React.useEffect(() => {
@@ -262,8 +265,12 @@ export default function ChatPage() {
       setMessages([]);
       return;
     }
-    // Don't refetch from DB if we just sent a message (messages are already in local state)
-    if (isSendingRef.current) return;
+    // Skip re-fetch when sendMessage just set a new conversation ID — local
+    // state already has the correct messages and a fetch would cause duplicates.
+    if (skipNextFetchRef.current) {
+      skipNextFetchRef.current = false;
+      return;
+    }
     setLoadingMsgs(true);
     fetch(`/api/chats/${activeConvId}`)
       .then((r) => r.json())
@@ -446,14 +453,14 @@ export default function ChatPage() {
       const escalationData: EscalationMeta | undefined =
         data.escalated && data.case_id
           ? {
-              case_id: data.case_id,
-              risk_score: data.risk_score,
-              risk_label: data.risk_label,
-              risk_rationale: data.risk_rationale,
-              policy_refs: data.policy_refs,
-              recommended_action: data.recommended_action,
-              timestamp: data.timestamp ?? new Date().toISOString(),
-            }
+            case_id: data.case_id,
+            risk_score: data.risk_score,
+            risk_label: data.risk_label,
+            risk_rationale: data.risk_rationale,
+            policy_refs: data.policy_refs,
+            recommended_action: data.recommended_action,
+            timestamp: data.timestamp ?? new Date().toISOString(),
+          }
           : undefined;
 
       const assistantMsg: Message = {
@@ -470,8 +477,11 @@ export default function ChatPage() {
       recentlySentContentRef.current.add(assistantMsg.content);
       setTimeout(() => recentlySentContentRef.current.delete(assistantMsg.content), CONTENT_TRACKING_TIMEOUT_MS);
 
-      // Update active conversation id (may be newly created)
+      // Update active conversation id (may be newly created).
+      // Set skipNextFetchRef BEFORE setActiveConvId so the useEffect that fires
+      // from the activeConvId change skips the redundant DB re-fetch.
       if (data.conversation_id && data.conversation_id !== activeConvId) {
+        skipNextFetchRef.current = true;
         setActiveConvId(data.conversation_id);
       }
 
@@ -580,11 +590,10 @@ export default function ChatPage() {
                 {groups[group].map((conv) => (
                   <div
                     key={conv.id}
-                    className={`group flex items-center gap-1 px-3 py-2 cursor-pointer rounded-md mx-1 text-sm transition-colors ${
-                      activeConvId === conv.id
+                    className={`group flex items-center gap-1 px-3 py-2 cursor-pointer rounded-md mx-1 text-sm transition-colors ${activeConvId === conv.id
                         ? "bg-primary/15 text-foreground"
                         : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
-                    }`}
+                      }`}
                     onClick={() => selectConversation(conv.id)}
                   >
                     <div className="flex-1 min-w-0">
@@ -801,13 +810,12 @@ export default function ChatPage() {
                     </div>
                   )}
                   <div
-                    className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                      msg.role === "user"
+                    className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${msg.role === "user"
                         ? "bg-primary text-primary-foreground rounded-br-sm"
                         : msgEscalation
                           ? "bg-muted text-foreground rounded-bl-sm border-l-2 border-amber-500"
                           : "bg-muted text-foreground rounded-bl-sm"
-                    }`}
+                      }`}
                   >
                     {msgEscalation ? (
                       <EscalationCard escalation={msgEscalation} timestamp={msg.created_at} />
