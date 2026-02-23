@@ -172,6 +172,16 @@ function extractInlineJson(text: string): { cleanText: string; jsonData: Record<
 function parseGatewayResult(
   data: Record<string, unknown>,
 ): McpToolCallResult {
+  // --- SLM unavailable — tell user to try later ---
+  if (data?.gateway_decision === "SLM_UNAVAILABLE" || data?.status === "SLM_UNAVAILABLE") {
+    return {
+      reply: "Our assessment service is temporarily unavailable. Please check back shortly — your request has not been lost.",
+      escalated: false,
+      case_id: typeof data.case_id === "string" ? data.case_id : undefined,
+      raw: data,
+    };
+  }
+
   // --- /api/intake response format ---
   // Identified by the presence of the `gateway_decision` field.
   if (typeof data?.gateway_decision === "string") {
@@ -294,6 +304,16 @@ function parseGatewayResult(
 
   // Extract status
   const status = typeof parsed?.status === "string" ? parsed.status : "";
+
+  if (status === "SLM_UNAVAILABLE") {
+    return {
+      reply: "Our assessment service is temporarily unavailable. Please check back shortly — your request has not been lost.",
+      escalated: false,
+      case_id: typeof parsed?.event_id === "string" ? parsed.event_id : undefined,
+      raw: data,
+    };
+  }
+
   const isBlocked = status === "BLOCKED_PENDING_REVIEW";
   const isApproved = status === "APPROVED";
 
