@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAuthUser } from "@/lib/getAuthUser";
-import { callMcpTool } from "@/lib/mcpClient";
+import { callMcpTool, callIntake } from "@/lib/mcpClient";
 import { createCase } from "@/lib/caseStore";
 import { chatCompletion, chatWithTools } from "@/lib/openaiClient";
 import { getClaimantProfile, buildProfileContext } from "@/lib/beneficiaryStore";
+import { buildIntakePayload, validateIntakePayload } from "@/lib/intakePayloadBuilder";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -180,12 +181,51 @@ export async function POST(req: NextRequest) {
   // ── Step 3: MCP Gateway tool call ────────────────────────────────────────
   if (gatewayUrl && gatewaySecret && toolCall) {
     try {
-      const result = await callMcpTool(
-        gatewayUrl,
-        gatewaySecret,
-        toolCall.name,
-        toolCall.arguments,
-      );
+      // ── Step 3a: Build + validate the structured IntakePayload ──────────
+      let result;
+      const claimantProfile = await getClaimantProfile(beneficiaryId).catch(() => null);
+
+      if (claimantProfile) {
+        const intakePayload = buildIntakePayload({
+          profile: claimantProfile,
+          userMessage: message,
+          history: effectiveHistory,
+          toolName: toolCall.name,
+          caseId: conversationId ?? undefined,
+        });
+
+        const validation = validateIntakePayload(intakePayload);
+        if (!validation.valid) {
+          console.error("[chat/route] IntakePayload validation failed:", validation.errors);
+          // Return a user-friendly error and do not proceed to the gateway
+          return NextResponse.json(
+            {
+              reply:
+                "I'm sorry, I couldn't process your request because some required information is missing. " +
+                "Please check your profile details and try again.",
+              conversation_id: conversationId,
+            },
+            { status: 422 },
+          );
+        }
+
+        // Try /api/intake first; fall back to callMcpTool on any error
+        try {
+          result = await callIntake(gatewayUrl, gatewaySecret, intakePayload);
+        } catch (intakeErr) {
+          console.warn("[chat/route] /api/intake unavailable, falling back to callMcpTool:", intakeErr);
+        }
+      }
+
+      // ── Step 3b: Fallback to generic tool call if intake was skipped/failed
+      if (!result) {
+        result = await callMcpTool(
+          gatewayUrl,
+          gatewaySecret,
+          toolCall.name,
+          toolCall.arguments,
+        );
+      }
 
       // If the Gateway escalated the tool call, create a case record so the
       // case officer portal can find it and send the event_id back when they decide.
