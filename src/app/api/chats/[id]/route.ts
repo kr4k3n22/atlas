@@ -24,7 +24,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { data: messages, error } = await supabaseAdmin
     .from("chat_messages")
-    .select("id, role, content, metadata, created_at")
+    .select("id, role, content, metadata, decision_trace, created_at")
     .eq("conversation_id", id)
     .order("created_at", { ascending: true });
 

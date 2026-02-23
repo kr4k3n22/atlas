@@ -344,6 +344,7 @@ export async function POST(req: NextRequest) {
           role: "assistant",
           content: result.reply,
           ...(escalationMeta ? { metadata: escalationMeta } : {}),
+          decision_trace: decisionTrace,
         });
         await supabaseAdmin
           .from("conversations")

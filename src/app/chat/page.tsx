@@ -357,6 +357,11 @@ export default function ChatPage() {
 
   // Polling fallback for chat_messages: when an escalation is active, poll every 8 s
   // so the approval message appears even if Realtime is blocked by RLS.
+  //
+  // IMPORTANT: We do a FULL replace of the message list with the DB version on
+  // each poll. Appending "new" messages by UUID breaks because optimistic messages
+  // (added immediately in sendMessage) use random UUIDs that never match the
+  // DB-generated UUIDs — causing every DB message to look "new" and duplicate.
   React.useEffect(() => {
     if (!activeConvId || !escalation) return;
 
@@ -365,12 +370,20 @@ export default function ChatPage() {
         .then((r) => r.json())
         .then((data) => {
           const fetched: Message[] = data.messages ?? [];
+          if (fetched.length === 0) return;
+
           setMessages((prev) => {
-            const existingIds = new Set(prev.map((m) => m.id));
-            const newMsgs = fetched.filter((m) => !existingIds.has(m.id));
-            if (newMsgs.length === 0) return prev;
-            // Auto-dismiss escalation if an approval/rejection message arrived
-            for (const m of newMsgs) {
+            // Build a content key set from what we currently show so we can
+            // detect genuinely new out-of-band messages (reviewer decisions).
+            const existingContentKeys = new Set(
+              prev.map((m) => `${m.role}:${m.content}`)
+            );
+            const brandNewMsgs = fetched.filter(
+              (m) => !existingContentKeys.has(`${m.role}:${m.content}`)
+            );
+
+            // Auto-dismiss escalation if a reviewer decision arrived
+            for (const m of brandNewMsgs) {
               if (m.role === "assistant") {
                 const c = m.content.toLowerCase();
                 if (DECISION_PATTERNS.some((p) => c.includes(p))) {
@@ -386,7 +399,10 @@ export default function ChatPage() {
                 }
               }
             }
-            return [...prev, ...newMsgs];
+
+            // Full replace with authoritative DB messages. This eliminates the
+            // optimistic-UUID mismatch problem and keeps decision_trace in sync.
+            return fetched;
           });
         })
         .catch(() => {
@@ -591,8 +607,8 @@ export default function ChatPage() {
                   <div
                     key={conv.id}
                     className={`group flex items-center gap-1 px-3 py-2 cursor-pointer rounded-md mx-1 text-sm transition-colors ${activeConvId === conv.id
-                        ? "bg-primary/15 text-foreground"
-                        : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+                      ? "bg-primary/15 text-foreground"
+                      : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
                       }`}
                     onClick={() => selectConversation(conv.id)}
                   >
@@ -811,10 +827,10 @@ export default function ChatPage() {
                   )}
                   <div
                     className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${msg.role === "user"
-                        ? "bg-primary text-primary-foreground rounded-br-sm"
-                        : msgEscalation
-                          ? "bg-muted text-foreground rounded-bl-sm border-l-2 border-amber-500"
-                          : "bg-muted text-foreground rounded-bl-sm"
+                      ? "bg-primary text-primary-foreground rounded-br-sm"
+                      : msgEscalation
+                        ? "bg-muted text-foreground rounded-bl-sm border-l-2 border-amber-500"
+                        : "bg-muted text-foreground rounded-bl-sm"
                       }`}
                   >
                     {msgEscalation ? (
