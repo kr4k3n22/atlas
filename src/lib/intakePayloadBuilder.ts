@@ -45,6 +45,8 @@ export const IntakePayloadSchema = z.object({
   free_text: z.object({
     claimant_message: z.string(),
     agent_chat_transcript_excerpt: z.string(),
+    // Pre-computed harm signal hint passed to the gateway for classification
+    caseworker_note: z.string().optional(),
   }),
 });
 
@@ -177,11 +179,40 @@ function mapFraudSignals(profile: ClaimantProfile): { identity_duplicate_match: 
 // Transcript excerpt helper
 // ──────────────────────────────────────────────────────────────────────────────
 
-const TRANSCRIPT_MESSAGES = 6;
+const TRANSCRIPT_MESSAGES = 30;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Harm signal keyword detector
+// ──────────────────────────────────────────────────────────────────────────────
+
+const HARM_KEYWORDS: Record<string, RegExp> = {
+  housing_risk: /\b(rent|evict|eviction|homeless|housing|landlord|mortgage|shelter)\b/i,
+  food_insecurity: /\b(food|hungry|hunger|starving|eat|meal|groceries)\b/i,
+  medical_access: /\b(medical|medicine|hospital|health|sick|illness|prescription|doctor)\b/i,
+  safety_risk: /\b(unsafe|violence|abuse|threat|danger|assault)\b/i,
+};
+
+/**
+ * Scans the full conversation (all messages + current message) for harm signal
+ * keywords and returns a note suitable for the caseworker_note field.
+ */
+export function detectHarmSignals(
+  history: Array<{ role: string; content: string }>,
+  currentMessage: string,
+): string | undefined {
+  const allText = [...history.map((m) => m.content), currentMessage].join(" ");
+  const detected = Object.entries(HARM_KEYWORDS)
+    .filter(([, pattern]) => pattern.test(allText))
+    .map(([signal]) => signal);
+
+  if (detected.length === 0) return undefined;
+  return `Harm signals detected by pre-screening: ${detected.join(", ")}. Please factor these into the risk assessment.`;
+}
 
 export function buildTranscriptExcerpt(
   history: Array<{ role: string; content: string }>,
 ): string {
+  // Use the last TRANSCRIPT_MESSAGES entries to include enough context
   const recent = history.slice(-TRANSCRIPT_MESSAGES);
   if (recent.length === 0) return "";
   return recent.map((m) => `[${m.role}]: ${m.content}`).join("\n");
@@ -240,6 +271,8 @@ export function buildIntakePayload(options: BuildIntakePayloadOptions): IntakePa
     free_text: {
       claimant_message: userMessage,
       agent_chat_transcript_excerpt: buildTranscriptExcerpt(history),
+      // Include pre-detected harm signals so the gateway can factor them in
+      caseworker_note: detectHarmSignals(history, userMessage),
     },
   };
 

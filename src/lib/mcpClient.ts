@@ -53,6 +53,8 @@ export interface McpToolCallResult {
   decision_validated?: boolean;
   proposed_decision_type?: string;
   effective_decision_type?: string;
+  /** true when the gateway returned a transient system/infrastructure error */
+  transient_error?: boolean;
   raw?: unknown;
 }
 
@@ -188,6 +190,7 @@ function parseGatewayResult(
     return {
       reply: "Our assessment service is temporarily unavailable. Please check back shortly — your request has not been lost.",
       escalated: false,
+      transient_error: true,
       case_id: typeof data.case_id === "string" ? data.case_id : undefined,
       raw: data,
     };
@@ -209,6 +212,7 @@ function parseGatewayResult(
       return {
         reply: "Our system is temporarily busy. Please try again in a moment — your request has not been lost.",
         escalated: false,
+        transient_error: true,
         raw: data,
       };
     }
@@ -331,6 +335,7 @@ function parseGatewayResult(
     return {
       reply: "Our assessment service is temporarily unavailable. Please check back shortly — your request has not been lost.",
       escalated: false,
+      transient_error: true,
       case_id: typeof parsed?.event_id === "string" ? parsed.event_id : undefined,
       raw: data,
     };
@@ -348,6 +353,7 @@ function parseGatewayResult(
     return {
       reply: "Our system is temporarily busy. Please try again in a moment — your request has not been lost.",
       escalated: false,
+      transient_error: true,
       raw: data,
     };
   }

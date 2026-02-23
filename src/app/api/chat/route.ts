@@ -272,7 +272,7 @@ export async function POST(req: NextRequest) {
             // Keep the existing reply on error.
           }
         }
-      } else if (!result.escalated && hasOpenAI) {
+      } else if (!result.escalated && !result.transient_error && hasOpenAI) {
         // Allow path — pass the MCP result to ChatGPT for a friendly confirmation.
         try {
           result.reply = await chatCompletion(
@@ -288,11 +288,13 @@ export async function POST(req: NextRequest) {
       const responseTimestamp = new Date().toISOString();
 
       // ── Build decision trace ──────────────────────────────────────────────
-      const gatewayAction = result.escalated
-        ? result.risk_label === "BLOCK"
-          ? "BLOCK"
-          : "NEEDS_HUMAN"
-        : "ALLOW";
+      const gatewayAction = result.transient_error
+        ? "SYSTEM_ERROR"
+        : result.escalated
+          ? result.risk_label === "BLOCK"
+            ? "BLOCK"
+            : "NEEDS_HUMAN"
+          : "ALLOW";
 
       const harmSignalOverride =
         result.risk_label === "BLOCK" || (result.risk_score !== undefined && result.risk_score >= 85);
@@ -326,16 +328,16 @@ export async function POST(req: NextRequest) {
         const escalationMeta =
           result.escalated && result.case_id
             ? {
-                escalation: {
-                  case_id: result.case_id,
-                  risk_score: result.risk_score,
-                  risk_label: result.risk_label,
-                  risk_rationale: result.risk_rationale,
-                  policy_refs: result.policy_refs,
-                  recommended_action: result.recommended_action,
-                  timestamp: responseTimestamp,
-                },
-              }
+              escalation: {
+                case_id: result.case_id,
+                risk_score: result.risk_score,
+                risk_label: result.risk_label,
+                risk_rationale: result.risk_rationale,
+                policy_refs: result.policy_refs,
+                recommended_action: result.recommended_action,
+                timestamp: responseTimestamp,
+              },
+            }
             : undefined;
         await supabaseAdmin.from("chat_messages").insert({
           conversation_id: conversationId,
