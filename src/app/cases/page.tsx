@@ -134,6 +134,7 @@ function badgeClass(label: string) {
   if (label === "REJECTED") return "bg-red-700/90 text-white border-red-600/40";
   if (label === "PENDING_REVIEW") return "bg-slate-700/70 text-slate-100 border-slate-600/40";
   if (label === "NEEDS_INFO") return "bg-yellow-500/90 text-black border-yellow-400/40";
+  if (label === "NEEDS_MORE_INFO") return "bg-yellow-500/90 text-black border-yellow-400/40";
   return "bg-slate-600/60 text-slate-100 border-slate-500/40";
 }
 
@@ -1007,7 +1008,7 @@ export default function CasesPage() {
                               )}
                             >
                               {c.risk_label}
-                              <span className="rounded-[2px] bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none">
+                              <span className="rounded-[2px] bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none" title="Gateway Risk Score — internal routing score used for case prioritization">
                                 {Math.round(c.risk_score)}
                               </span>
                             </span>
@@ -1097,7 +1098,7 @@ export default function CasesPage() {
                       )}
                     >
                       {selected.risk_label}
-                      <span className="rounded-[2px] bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none">
+                      <span className="rounded-[2px] bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none" title="Gateway Risk Score — internal routing score used for case prioritization">
                         {Math.round(selected.risk_score)}
                       </span>
                     </span>

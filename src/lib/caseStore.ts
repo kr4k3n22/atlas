@@ -182,7 +182,6 @@ export async function applyDecision(input: {
   if (typeof conversationId === "string" && conversationId) {
     const decisionTs = nowIso();
     const refId = updated.id;
-    const eventId = typeof gatewayEventId === "string" ? gatewayEventId : null;
 
     let chatContent: string;
     const decisionDateStr = new Date(decisionTs).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
@@ -190,22 +189,20 @@ export async function applyDecision(input: {
       chatContent = [
         `✅ **Request Approved**`,
         ``,
-        `Your request has been reviewed and approved by ${approver}.`,
+        `Your request has been reviewed and approved by a case officer.`,
         note ? `\n**Reviewer Notes:**\n${note}` : ``,
         ``,
         `📋 **Reference:** ${refId}`,
-        eventId ? `🔗 **Event ID:** ${eventId}` : ``,
         `🕐 **Decision Time:** ${decisionDateStr}`,
       ].filter(Boolean).join("\n");
     } else if (decision === "REJECT") {
       chatContent = [
         `❌ **Request Not Approved**`,
         ``,
-        `Your request has been reviewed and was not approved by ${approver}.`,
+        `Your request has been reviewed and was not approved by a case officer.`,
         note ? `\n**Reviewer Notes:**\n${note}` : ``,
         ``,
         `📋 **Reference:** ${refId}`,
-        eventId ? `🔗 **Event ID:** ${eventId}` : ``,
         `🕐 **Decision Time:** ${decisionDateStr}`,
         ``,
         `If you believe this decision is incorrect, you may request a review or appeal.`,
@@ -214,11 +211,10 @@ export async function applyDecision(input: {
       chatContent = [
         `ℹ️ **Additional Information Requested**`,
         ``,
-        `The reviewer (${approver}) has requested additional information before making a decision.`,
+        `A case officer has requested additional information before making a decision.`,
         note ? `\n**Reviewer's Request:**\n${note}` : ``,
         ``,
         `📋 **Reference:** ${refId}`,
-        eventId ? `🔗 **Event ID:** ${eventId}` : ``,
         `🕐 **Requested At:** ${decisionDateStr}`,
         ``,
         `Please respond in this conversation with the requested information.`,

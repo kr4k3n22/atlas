@@ -99,10 +99,10 @@ function groupConversations(conversations: Conversation[]) {
 }
 
 const QUICK_PROMPTS = [
-  "Check my claim status",
-  "Apply for unemployment benefit",
-  "Appeal a decision",
-  "What documents do I need?",
+  "Check my unemployment benefit claim status",
+  "Request an extension on my benefit payment",
+  "What documents do I need for my welfare claim?",
+  "I need to update my personal details",
 ];
 
 // Patterns indicating a case decision (approval/rejection/info request) from a reviewer
@@ -162,8 +162,8 @@ function EscalationCard({
             </span>
           )}
           {escalation.risk_score !== undefined && (
-            <span className={`text-xs font-medium ${riskColor}`}>
-              Score: {escalation.risk_score}/100
+            <span className={`text-xs font-medium ${riskColor}`} title="Gateway Risk Score — internal routing score used for case prioritization">
+              Gateway Risk Score: {escalation.risk_score}/100
             </span>
           )}
         </div>
@@ -542,7 +542,7 @@ export default function ChatPage() {
       <div className="p-3 border-b border-border">
         <Button className="w-full justify-start gap-2" onClick={startNewChat}>
           <Plus className="w-4 h-4" />
-          + New Request
+          New Conversation
         </Button>
       </div>
 
@@ -721,8 +721,8 @@ export default function ChatPage() {
                       </span>
                     )}
                     {escalation.risk_score !== undefined && (
-                      <span className="text-xs opacity-80">
-                        Score: {escalation.risk_score}/100
+                      <span className="text-xs opacity-80" title="Gateway Risk Score — internal routing score used for case prioritization">
+                        Gateway Risk Score: {escalation.risk_score}/100
                       </span>
                     )}
                   </div>
@@ -760,7 +760,7 @@ export default function ChatPage() {
                   <h1 className="text-2xl font-semibold mb-1">
                     Hello{displayName ? `, ${displayName}` : ""}
                   </h1>
-                  <p className="text-muted-foreground">How can I help you today?</p>
+                  <p className="text-muted-foreground">How can I help with your welfare benefits today?</p>
                 </div>
                 <div className="grid grid-cols-2 gap-2 w-full max-w-sm">
                   {QUICK_PROMPTS.map((prompt) => (
@@ -804,7 +804,9 @@ export default function ChatPage() {
                     className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
                       msg.role === "user"
                         ? "bg-primary text-primary-foreground rounded-br-sm"
-                        : "bg-muted text-foreground rounded-bl-sm"
+                        : msgEscalation
+                          ? "bg-muted text-foreground rounded-bl-sm border-l-2 border-amber-500"
+                          : "bg-muted text-foreground rounded-bl-sm"
                     }`}
                   >
                     {msgEscalation ? (
