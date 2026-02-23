@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ConversationContext } from "./ConversationContext";
 
 type RiskLabel = "ROUTINE" | "ESCALATE" | "BLOCK";
 type CaseStatus = "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "NEEDS_INFO" | "CLOSED";
@@ -24,14 +25,32 @@ type CaseRecord = {
   }>;
 };
 
+type SummaryResult = {
+  summary: string;
+  messages: Array<{ role: "user" | "assistant"; content: string; created_at: string }>;
+};
+
+const BASE = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
 async function getCase(id: string): Promise<CaseRecord | null> {
-  const res = await fetch(`http://localhost:3000/api/cases/${encodeURIComponent(id)}`, {
+  const res = await fetch(`${BASE}/api/cases/${encodeURIComponent(id)}`, {
     cache: "no-store",
   });
-
   if (res.status === 404) return null;
   if (!res.ok) throw new Error("Failed to load case");
   return res.json();
+}
+
+async function getSummary(id: string): Promise<SummaryResult | null> {
+  try {
+    const res = await fetch(`${BASE}/api/cases/${encodeURIComponent(id)}/summary`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
 }
 
 function badge(label: string) {
@@ -64,7 +83,8 @@ export default async function CaseDetailPage(
 ) {
   const { id } = await props.params;
 
-  const c = await getCase(id);
+  // Fetch case + summary in parallel
+  const [c, summaryResult] = await Promise.all([getCase(id), getSummary(id)]);
   if (!c) return notFound();
 
   return (
@@ -153,7 +173,7 @@ export default async function CaseDetailPage(
           <div className="rounded-lg border border-border/60 bg-background/50 p-4">
             <div className="text-sm font-semibold">Tool args (redacted)</div>
             <pre className="mt-2 overflow-auto rounded-md bg-black/30 p-3 text-xs leading-relaxed">
-{JSON.stringify(c.tool_args_redacted ?? {}, null, 2)}
+              {JSON.stringify(c.tool_args_redacted ?? {}, null, 2)}
             </pre>
           </div>
 
@@ -186,6 +206,18 @@ export default async function CaseDetailPage(
             </div>
           </div>
         </div>
+
+        {/* Conversation context panel */}
+        {summaryResult ? (
+          <ConversationContext
+            summary={summaryResult.summary}
+            messages={summaryResult.messages}
+          />
+        ) : (
+          <div className="rounded-xl border border-border/40 bg-background/30 p-5 text-sm text-muted-foreground">
+            No conversation transcript linked to this case.
+          </div>
+        )}
       </div>
     </div>
   );

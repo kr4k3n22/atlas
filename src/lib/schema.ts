@@ -30,6 +30,8 @@ export const CaseSchema = z.object({
   risk_rationale: z.string(),
   policy_refs: z.array(z.string()),
   history: z.array(CaseHistoryItem),
+  /** AI-generated conversation summary — cached after first generation. */
+  ai_summary: z.string().nullable().optional(),
 });
 
 export type Case = z.infer<typeof CaseSchema>;
