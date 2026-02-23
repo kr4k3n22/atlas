@@ -479,6 +479,107 @@ function JsonOrTextDisplay({ value, className }: { value: string; className?: st
 }
 
 // ──────────────────────────────────────────────
+// Conversation summary sub-panel
+// ──────────────────────────────────────────────
+
+function ConversationSummaryPanel({
+  loading,
+  summary,
+  messages,
+}: {
+  loading: boolean;
+  summary: string | null;
+  messages: Array<{ role: string; content: string; created_at: string }>;
+}) {
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
+
+  if (loading) {
+    return (
+      <div className="rounded-lg border border-muted/60 bg-background/30 p-3 animate-pulse">
+        <div className="text-xs font-semibold text-muted-foreground">Conversation summary</div>
+        <div className="mt-2 h-4 w-3/4 rounded bg-muted/40" />
+        <div className="mt-1 h-4 w-1/2 rounded bg-muted/40" />
+      </div>
+    );
+  }
+
+  if (!summary) return null;
+
+  // Lightweight markdown: **bold** and bullet lines
+  function renderSummary(text: string) {
+    return text.split("\n").map((line, i) => {
+      const isBullet = /^[-•*]\s/.test(line.trim());
+      const parts = line.replace(/\*\*(.+?)\*\*/g, "|||$1|||").split("|||");
+      const rendered = parts.map((p, j) =>
+        j % 2 === 1 ? <strong key={j}>{p}</strong> : p
+      );
+      if (isBullet) {
+        return (
+          <li key={i} className="ml-4 list-disc text-sm leading-relaxed">
+            {rendered}
+          </li>
+        );
+      }
+      if (!line.trim()) return <div key={i} className="h-2" />;
+      return (
+        <p key={i} className="text-sm leading-relaxed">
+          {rendered}
+        </p>
+      );
+    });
+  }
+
+  function fmtTime(iso: string) {
+    try {
+      const d = new Date(iso);
+      return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    } catch { return ""; }
+  }
+
+  return (
+    <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-semibold text-blue-400">✦ Conversation summary</div>
+      </div>
+
+      <div className="space-y-1">{renderSummary(summary)}</div>
+
+      {messages.length > 0 && (
+        <div>
+          <button
+            onClick={() => setTranscriptOpen((o) => !o)}
+            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+          >
+            {transcriptOpen ? "▾" : "▸"} {transcriptOpen ? "Hide" : "Show"} full transcript ({messages.length} messages)
+          </button>
+
+          {transcriptOpen && (
+            <div className="mt-2 max-h-64 overflow-y-auto space-y-2 pr-1">
+              {messages.map((m, i) => (
+                <div
+                  key={i}
+                  className={cx(
+                    "rounded-md px-3 py-2 text-xs max-w-[90%]",
+                    m.role === "user"
+                      ? "ml-0 bg-muted/40 border border-muted/60"
+                      : "ml-auto bg-blue-500/10 border border-blue-500/20"
+                  )}
+                >
+                  <div className="text-[10px] text-muted-foreground mb-1">
+                    {m.role === "user" ? "Claimant" : "Atlas"} {m.created_at ? `· ${fmtTime(m.created_at)}` : ""}
+                  </div>
+                  <div className="whitespace-pre-wrap">{m.content}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────
 // Main page
 // ──────────────────────────────────────────────
 
@@ -505,6 +606,9 @@ export default function CasesPage() {
   const [approverSlug, setApproverSlug] = useState("");
   const [approverName, setApproverName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [convSummary, setConvSummary] = useState<string | null>(null);
+  const [convMessages, setConvMessages] = useState<Array<{ role: string; content: string; created_at: string }>>([]);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   const now = Date.now();
   const hoursSince = (iso: string) =>
@@ -549,6 +653,24 @@ export default function CasesPage() {
       }
     });
   }, []);
+
+  // Fetch conversation summary whenever the selected case changes
+  useEffect(() => {
+    if (!selectedId) { setConvSummary(null); setConvMessages([]); return; }
+    setSummaryLoading(true);
+    setConvSummary(null);
+    setConvMessages([]);
+    fetch(`/api/cases/${encodeURIComponent(selectedId)}/summary`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data) {
+          setConvSummary(data.summary ?? null);
+          setConvMessages(data.messages ?? []);
+        }
+      })
+      .catch(() => { })
+      .finally(() => setSummaryLoading(false));
+  }, [selectedId]);
 
   async function refresh() {
     setLoading(true);
@@ -795,13 +917,12 @@ export default function CasesPage() {
               title={`Realtime: ${realtimeStatus}`}
             >
               <span
-                className={`inline-block h-2 w-2 rounded-full ${
-                  realtimeStatus === "SUBSCRIBED"
-                    ? "bg-green-500"
-                    : realtimeStatus === "connecting"
-                      ? "bg-yellow-400"
-                      : "bg-red-500"
-                }`}
+                className={`inline-block h-2 w-2 rounded-full ${realtimeStatus === "SUBSCRIBED"
+                  ? "bg-green-500"
+                  : realtimeStatus === "connecting"
+                    ? "bg-yellow-400"
+                    : "bg-red-500"
+                  }`}
               />
               {refreshing ? "Refreshing..." : "Refresh"}
             </button>
@@ -1147,6 +1268,13 @@ export default function CasesPage() {
                   <FreeTextPanel
                     freeText={selected.tool_args_redacted?.free_text as FreeText | undefined}
                     userMessage={selected.user_message}
+                  />
+
+                  {/* 8. Conversation summary */}
+                  <ConversationSummaryPanel
+                    loading={summaryLoading}
+                    summary={convSummary}
+                    messages={convMessages}
                   />
 
                   {/* Risk rationale */}
