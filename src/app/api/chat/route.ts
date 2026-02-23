@@ -309,13 +309,13 @@ export async function POST(req: NextRequest) {
       const schemaAligned = typeof toolCall.arguments.beneficiary_id === "string" && toolCall.arguments.beneficiary_id.length > 0;
 
       const decisionTrace: DecisionTrace = {
-        proposed_decision_type: toolCall.name,
-        effective_decision_type: gatewayAction,
+        proposed_decision_type: result.proposed_decision_type ?? toolCall.name,
+        effective_decision_type: result.effective_decision_type ?? gatewayAction,
         gateway_action: gatewayAction,
         risk_score: result.risk_score,
         risk_label: result.risk_label,
-        harm_signal_override: harmSignalOverride,
-        mismatch_detected: result.escalated,
+        harm_signal_override: result.harm_signals_detected ?? harmSignalOverride,
+        mismatch_detected: result.decision_validated !== undefined ? !result.decision_validated : result.escalated,
         schema_aligned: schemaAligned,
         structured_inputs_summary: structuredInputsSummary,
         free_text_excerpt: message.slice(0, 200),
