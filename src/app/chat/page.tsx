@@ -20,7 +20,7 @@ import { createClient } from "@/lib/supabaseClient";
 import { sanitizeRationale } from "@/lib/mcpClient";
 import { toast } from "sonner";
 import DecisionTrace, { type DecisionTraceData } from "@/components/DecisionTrace";
-import { APPROVER_SLUGS } from "@/lib/approvers";
+import { APPROVER_SLUGS, APPROVERS } from "@/lib/approvers";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -106,7 +106,10 @@ function groupConversations(conversations: Conversation[]) {
   return groups;
 }
 
-const APPROVER_SLUGS_SET = new Set(APPROVER_SLUGS);
+const APPROVER_IDENTIFIERS_SET = new Set([
+  ...APPROVER_SLUGS,
+  ...APPROVERS.map((a) => a.fullName),
+]);
 
 type DisplayCategory =
   | "officer_approved"
@@ -121,7 +124,7 @@ type DisplayCategory =
 function getDisplayCategory(cs: ConversationCaseStatus | undefined): DisplayCategory {
   if (!cs) return null;
   const { status, decided_by, recommended_action } = cs;
-  const byOfficer = decided_by !== null && APPROVER_SLUGS_SET.has(decided_by);
+  const byOfficer = decided_by !== null && APPROVER_IDENTIFIERS_SET.has(decided_by);
 
   if (status === "PENDING_REVIEW") return "pending_review";
 

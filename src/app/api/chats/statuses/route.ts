@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAuthUser } from "@/lib/getAuthUser";
-import { APPROVER_SLUGS } from "@/lib/approvers";
+import { APPROVERS, APPROVER_SLUGS } from "@/lib/approvers";
+
+// Build a set of all known approver identifiers (slugs + full names)
+const APPROVER_IDENTIFIERS_SET = new Set([
+  ...APPROVER_SLUGS,
+  ...APPROVERS.map((a) => a.fullName),
+]);
 
 export type ConversationCaseStatus = {
   status: string;
@@ -68,7 +74,7 @@ export async function GET(req: NextRequest) {
       : [];
     const lastHumanEntry = [...history]
       .reverse()
-      .find((e) => APPROVER_SLUGS.includes(e.actor));
+      .find((e) => APPROVER_IDENTIFIERS_SET.has(e.actor));
     const decided_by = lastHumanEntry?.actor ?? null;
 
     statuses[convId] = {
