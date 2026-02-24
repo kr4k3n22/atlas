@@ -3,9 +3,9 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAuthUser } from "@/lib/getAuthUser";
 import { callMcpTool, callIntake } from "@/lib/mcpClient";
 import { createCase } from "@/lib/caseStore";
-import { chatCompletion, chatWithTools } from "@/lib/openaiClient";
+import { chatCompletion, chatWithTools, enrichReasonContext } from "@/lib/openaiClient";
 import { getClaimantProfile, buildProfileContext } from "@/lib/beneficiaryStore";
-import { buildIntakePayload, validateIntakePayload, buildContextualClaimantMessage } from "@/lib/intakePayloadBuilder";
+import { buildIntakePayload, validateIntakePayload, buildContextualClaimantMessage, detectHarmSignals, buildTranscriptExcerpt } from "@/lib/intakePayloadBuilder";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -197,6 +197,7 @@ export async function POST(req: NextRequest) {
     try {
       // ── Step 3a: Build + validate the structured IntakePayload ──────────
       let result;
+      let enrichedMessage: string | undefined;
       const claimantProfile = await getClaimantProfile(beneficiaryId).catch(() => null);
 
       if (claimantProfile) {
@@ -210,9 +211,20 @@ export async function POST(req: NextRequest) {
           message,
         );
 
+        // Enrich the claimant message with AI-generated context before sending to gateway
+        const harmNote = detectHarmSignals(effectiveHistory, claimantMessage);
+        enrichedMessage = await enrichReasonContext({
+          claimantMessage,
+          beneficiaryId,
+          toolName: toolCall.name,
+          harmSignals: harmNote ?? undefined,
+          claimantContext: claimantContextBlock ?? undefined,
+          transcriptExcerpt: buildTranscriptExcerpt(effectiveHistory),
+        });
+
         const intakePayload = buildIntakePayload({
           profile: claimantProfile,
-          userMessage: claimantMessage,
+          userMessage: enrichedMessage,
           history: effectiveHistory,
           toolName: toolCall.name,
           caseId: conversationId ?? undefined,
@@ -244,11 +256,18 @@ export async function POST(req: NextRequest) {
 
       // ── Step 3b: Fallback to generic tool call if intake was skipped/failed
       if (!result) {
+        const enrichedArgs = { ...toolCall.arguments };
+      // In the fallback path, only the `reason` field carries the free-text
+      // claimant narrative — other args (e.g. beneficiary_id, changes) are
+      // structured identifiers that should not be replaced.
+      if (typeof enrichedArgs.reason === "string" && enrichedMessage) {
+          enrichedArgs.reason = enrichedMessage;
+        }
         result = await callMcpTool(
           gatewayUrl,
           gatewaySecret,
           toolCall.name,
-          toolCall.arguments,
+          enrichedArgs,
         );
       }
 
