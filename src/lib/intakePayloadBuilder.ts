@@ -45,8 +45,7 @@ export const IntakePayloadSchema = z.object({
   free_text: z.object({
     claimant_message: z.string(),
     agent_chat_transcript_excerpt: z.string(),
-    // Pre-computed harm signal hint passed to the gateway for classification
-    caseworker_note: z.string().optional(),
+    // caseworker_note: z.string().optional(), // TEMP DISABLED — diagnosing 422 (Pydantic extra='forbid'?)
   }),
 });
 
@@ -345,8 +344,7 @@ export function buildIntakePayload(options: BuildIntakePayloadOptions): IntakePa
     free_text: {
       claimant_message: userMessage,
       agent_chat_transcript_excerpt: buildTranscriptExcerpt(history),
-      // Include pre-detected harm signals and context-bypass warning
-      caseworker_note: caseworkerNote,
+      // caseworker_note: caseworkerNote, // TEMP DISABLED — diagnosing 422 (Pydantic extra='forbid'?)
     },
   };
 
