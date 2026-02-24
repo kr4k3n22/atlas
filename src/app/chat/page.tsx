@@ -20,6 +20,7 @@ import { createClient } from "@/lib/supabaseClient";
 import { sanitizeRationale } from "@/lib/mcpClient";
 import { toast } from "sonner";
 import DecisionTrace, { type DecisionTraceData } from "@/components/DecisionTrace";
+import { APPROVER_SLUGS } from "@/lib/approvers";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -49,6 +50,13 @@ type Conversation = {
   title: string;
   created_at: string;
   updated_at: string;
+};
+
+type ConversationCaseStatus = {
+  status: string;
+  risk_label: string | null;
+  decided_by: string | null;
+  recommended_action: string | null;
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -97,6 +105,120 @@ function groupConversations(conversations: Conversation[]) {
   }
   return groups;
 }
+
+const APPROVER_SLUGS_SET = new Set(APPROVER_SLUGS);
+
+type DisplayCategory =
+  | "officer_approved"
+  | "officer_info_requested"
+  | "officer_denied"
+  | "auto_approved"
+  | "auto_denied"
+  | "auto_review"
+  | "pending_review"
+  | null;
+
+function getDisplayCategory(cs: ConversationCaseStatus | undefined): DisplayCategory {
+  if (!cs) return null;
+  const { status, decided_by, recommended_action } = cs;
+  const byOfficer = decided_by !== null && APPROVER_SLUGS_SET.has(decided_by);
+
+  if (status === "PENDING_REVIEW") return "pending_review";
+
+  if (status === "APPROVED") {
+    if (byOfficer || recommended_action === "escalate_to_human") return "officer_approved";
+    return "auto_approved";
+  }
+  if (status === "REJECTED") {
+    if (byOfficer) return "officer_denied";
+    return "auto_denied";
+  }
+  if (status === "NEEDS_MORE_INFO") {
+    if (byOfficer) return "officer_info_requested";
+    return "auto_review";
+  }
+  if (recommended_action === "auto_review") return "auto_review";
+  return null;
+}
+
+const CATEGORY_STYLE: Record<
+  NonNullable<DisplayCategory>,
+  {
+    border: string;
+    badgeBg: string;
+    badgeText: string;
+    icon: string;
+    label: string;
+    tooltip: string;
+  }
+> = {
+  officer_approved: {
+    border: "border-l-2 border-l-green-500",
+    badgeBg: "bg-green-500/15",
+    badgeText: "text-green-400",
+    icon: "✓",
+    label: "Approved by Case Officer",
+    tooltip: "Approved by Case Officer",
+  },
+  officer_info_requested: {
+    border: "border-l-2 border-l-amber-500",
+    badgeBg: "bg-amber-500/15",
+    badgeText: "text-amber-400",
+    icon: "ℹ",
+    label: "Info requested by Case Officer",
+    tooltip: "Further information requested by Case Officer",
+  },
+  officer_denied: {
+    border: "border-l-2 border-l-red-500",
+    badgeBg: "bg-red-500/15",
+    badgeText: "text-red-400",
+    icon: "✕",
+    label: "Denied by Case Officer",
+    tooltip: "Denied by Case Officer",
+  },
+  auto_approved: {
+    border: "border-l-2 border-l-blue-500",
+    badgeBg: "bg-blue-500/15",
+    badgeText: "text-blue-400",
+    icon: "⚡",
+    label: "Auto-Approved",
+    tooltip: "Automatically approved — low risk",
+  },
+  auto_denied: {
+    border: "border-l-2 border-l-rose-500",
+    badgeBg: "bg-rose-500/15",
+    badgeText: "text-rose-400",
+    icon: "🚫",
+    label: "Auto-Denied",
+    tooltip: "Automatically denied",
+  },
+  auto_review: {
+    border: "border-l-2 border-l-slate-400",
+    badgeBg: "bg-slate-500/15",
+    badgeText: "text-slate-400",
+    icon: "🔄",
+    label: "Auto Review: Need More Info",
+    tooltip: "Auto Review: Need More Information",
+  },
+  pending_review: {
+    border: "border-l-2 border-l-amber-400 border-dashed",
+    badgeBg: "bg-amber-500/10",
+    badgeText: "text-amber-300",
+    icon: "⏳",
+    label: "Pending Review",
+    tooltip: "Pending review by a case officer",
+  },
+};
+
+const LEGEND_ITEMS: Array<{ category: NonNullable<DisplayCategory>; label: string }> = [
+  { category: "officer_approved", label: "Approved by Case Officer" },
+  { category: "officer_info_requested", label: "Info Requested by Case Officer" },
+  { category: "officer_denied", label: "Denied by Case Officer" },
+  { category: "auto_approved", label: "Auto-Approved" },
+  { category: "auto_denied", label: "Auto-Denied" },
+  { category: "auto_review", label: "Auto Review" },
+  { category: "pending_review", label: "Pending Review" },
+];
 
 const QUICK_PROMPTS = [
   "Check my unemployment benefit claim status",
@@ -220,6 +342,7 @@ export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [deleteConfirm, setDeleteConfirm] = React.useState<string | null>(null);
   const [escalation, setEscalation] = React.useState<EscalationMeta | null>(null);
+  const [caseStatuses, setCaseStatuses] = React.useState<Record<string, ConversationCaseStatus>>({});
 
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
@@ -249,6 +372,13 @@ export default function ChatPage() {
       if (res.ok) {
         const data = await res.json();
         setConversations(data.conversations ?? []);
+      }
+      const statusRes = await fetch("/api/chats/statuses");
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        setCaseStatuses(statusData.statuses ?? {});
+      } else {
+        console.warn("[loadConversations] Failed to fetch case statuses:", statusRes.status);
       }
     } finally {
       setLoadingConvs(false);
@@ -603,13 +733,16 @@ export default function ChatPage() {
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 py-1">
                   {group}
                 </p>
-                {groups[group].map((conv) => (
+                {groups[group].map((conv) => {
+                    const category = getDisplayCategory(caseStatuses[conv.id]);
+                    const style = category ? CATEGORY_STYLE[category] : null;
+                    return (
                   <div
                     key={conv.id}
                     className={`group flex items-center gap-1 px-3 py-2 cursor-pointer rounded-md mx-1 text-sm transition-colors ${activeConvId === conv.id
                       ? "bg-primary/15 text-foreground"
                       : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
-                      }`}
+                      } ${style ? style.border : ""}`}
                     onClick={() => selectConversation(conv.id)}
                   >
                     <div className="flex-1 min-w-0">
@@ -622,6 +755,17 @@ export default function ChatPage() {
                       <div className="text-[10px] text-muted-foreground/60 mt-0.5">
                         {formatDateTime(conv.updated_at)}
                       </div>
+                      {style && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium ${style.badgeBg} ${style.badgeText}`}
+                            title={style.tooltip}
+                          >
+                            <span>{style.icon}</span>
+                            <span className="max-w-[140px] truncate">{style.label}</span>
+                          </span>
+                        </div>
+                      )}
                     </div>
                     {deleteConfirm === conv.id ? (
                       <div className="flex gap-1 shrink-0">
@@ -657,12 +801,33 @@ export default function ChatPage() {
                       </button>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )
           )
         )}
       </div>
+
+      {/* Status legend */}
+      <details className="px-3 py-2 border-t border-border">
+        <summary className="text-[10px] text-muted-foreground cursor-pointer hover:text-foreground">
+          Status legend
+        </summary>
+        <div className="mt-1.5 space-y-1 text-[9px]">
+          {LEGEND_ITEMS.map(({ category, label }) => {
+            const s = CATEGORY_STYLE[category];
+            return (
+              <div key={category} className="flex items-center gap-1.5">
+                <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-medium ${s.badgeBg} ${s.badgeText}`}>
+                  <span>{s.icon}</span>
+                </span>
+                <span className="text-muted-foreground">{label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </details>
 
       {/* User info */}
       <div className="p-3 border-t border-border flex items-center gap-2">
