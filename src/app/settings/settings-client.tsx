@@ -21,7 +21,7 @@ import { Separator } from "@/components/ui/separator";
 
 export default function SettingsClient() {
   const { settings, patchSettings, setSettings } = useSettings();
-  const { resolvedTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
 
   const settingList = useMemo(() => {
     return [
@@ -49,7 +49,11 @@ export default function SettingsClient() {
             <Label>Theme</Label>
             <Select
               value={settings.theme}
-              onValueChange={(v) => patchSettings({ theme: v as any })}
+              onValueChange={(v) => {
+                const next = v as any;
+                setTheme(next);
+                patchSettings({ theme: next });
+              }}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Theme" />
@@ -223,7 +227,13 @@ export default function SettingsClient() {
             ))}
           </ul>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setSettings(defaultSettings)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSettings(defaultSettings);
+                setTheme(defaultSettings.theme);
+              }}
+            >
               Restore defaults
             </Button>
           </div>

@@ -24,7 +24,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   };
 
   const patchSettings = (patch: Partial<UserSettings>) => {
-    setSettings({ ...settings, ...patch });
+    setSettingsState((prev) => {
+      const next = { ...prev, ...patch };
+      saveSettings(next);
+      return next;
+    });
   };
 
   const value = useMemo(() => ({ settings, setSettings, patchSettings }), [settings]);
