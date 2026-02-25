@@ -328,7 +328,7 @@ function EscalationCard({
           )}
           {escalation.risk_score !== undefined && (
             <span className={`text-xs font-medium ${riskColor}`} title="Gateway Risk Score — internal routing score used for case prioritization">
-              Gateway Risk Score: {escalation.risk_score}/100
+
             </span>
           )}
         </div>
@@ -966,7 +966,7 @@ export default function ChatPage() {
                     )}
                     {escalation.risk_score !== undefined && (
                       <span className="text-xs opacity-80" title="Gateway Risk Score — internal routing score used for case prioritization">
-                        Gateway Risk Score: {escalation.risk_score}/100
+
                       </span>
                     )}
                   </div>
