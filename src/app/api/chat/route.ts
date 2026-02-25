@@ -184,7 +184,17 @@ export async function POST(req: NextRequest) {
 
   if (hasOpenAI) {
     try {
-      const aiResult = await chatWithTools(effectiveHistory, message, beneficiaryId, claimantContextBlock ?? undefined);
+      // Step 1: Detect specific tool intent locally via regex
+      const localTool = mapMessageToTool(message, beneficiaryId);
+
+      const aiResult = await chatWithTools(
+        effectiveHistory,
+        message,
+        beneficiaryId,
+        claimantContextBlock ?? undefined,
+        localTool?.name // Force the tool if detected locally
+      );
+
       if (aiResult.type === "tool_call") {
         toolCall = { name: aiResult.name, arguments: aiResult.arguments };
       } else {

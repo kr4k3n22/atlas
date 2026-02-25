@@ -306,6 +306,7 @@ export async function chatWithTools(
   userMessage: string,
   beneficiaryId: string,
   claimantContext?: string,
+  forceToolName?: string,
 ): Promise<ChatWithToolsResult> {
   const client = getClient();
   const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
@@ -322,11 +323,16 @@ export async function chatWithTools(
     { role: "user", content: userMessage },
   ];
 
+  // If a tool is forced (e.g. by local regex), we use required tool_choice.
+  const toolChoice: any = forceToolName
+    ? { type: "function", function: { name: forceToolName } }
+    : "auto";
+
   const response = await client.chat.completions.create({
     model,
     messages: chatMessages,
     tools: ATLAS_TOOLS,
-    tool_choice: "auto",
+    tool_choice: toolChoice,
   });
 
   const choice = response.choices[0];

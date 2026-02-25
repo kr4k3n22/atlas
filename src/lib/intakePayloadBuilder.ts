@@ -166,11 +166,23 @@ const TRANSCRIPT_MESSAGES = 100;
 
 export function buildTranscriptExcerpt(
   history: Array<{ role: string; content: string }>,
+  profile?: ClaimantProfile,
 ): string {
-  // Use the last TRANSCRIPT_MESSAGES entries to include enough context
+  let header = "";
+  if (profile) {
+    const harm = profile.harmSignals
+      ? `[GOVERNANCE] Harm Signals: ${profile.harmSignals.level} (${profile.harmSignals.types.join(", ")}) - ${profile.harmSignals.notes}`
+      : "[GOVERNANCE] No active harm signals detected.";
+    const note = profile.caseworkerNote
+      ? `\n[GOVERNANCE] Caseworker Note: ${profile.caseworkerNote}`
+      : "";
+    header = `${harm}${note}\n---\n`;
+  }
+
+  // Use the last TRANSCRIPT_MESSAGES entries
   const recent = history.slice(-TRANSCRIPT_MESSAGES);
-  if (recent.length === 0) return "";
-  return recent.map((m) => `[${m.role}]: ${m.content}`).join("\n");
+  if (recent.length === 0) return header;
+  return header + recent.map((m) => `[${m.role}]: ${m.content}`).join("\n");
 }
 
 
@@ -248,7 +260,7 @@ export function buildIntakePayload(options: BuildIntakePayloadOptions): IntakePa
     free_text: {
       ...(storedPayload?.free_text as Record<string, unknown> || {}),
       claimant_message: userMessage,
-      agent_chat_transcript_excerpt: buildTranscriptExcerpt(history),
+      agent_chat_transcript_excerpt: buildTranscriptExcerpt(history, profile),
     },
 
     // Prioritize harmful signals and caseworker notes from the live profile/system context
