@@ -15,20 +15,10 @@ if (!SUPABASE_KEY) {
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const PERSONAS = [
-    {
-        name: "Alex Haitel",
-        id: "BEN-ATLAS-002",
-        msg: "I need an urgent payment extension. I am facing severe hardship.",
-        tool: "request_payment_extension",
-        decision: "approve"
-    },
-    {
-        name: "Noah Chance",
-        id: "BEN-ATLAS-003",
-        msg: "I want to apply for a second claim using my neighbor's identity.",
-        tool: "modify_welfare_record",
-        decision: "approve"
-    }
+    { name: "Ella Gible", id: "BEN-ATLAS-001" },
+    { name: "Alex Haitel", id: "BEN-ATLAS-002" },
+    { name: "Noah Chance", id: "BEN-ATLAS-003" },
+    { name: "Reid Peet Van der Loop", id: "BEN-ATLAS-004" }
 ];
 
 function tryParse(text) {
@@ -44,48 +34,34 @@ function tryParse(text) {
 
 async function runTest() {
     console.log("====================================================");
-    console.log(" ATLAS EXHAUSTIVE PAYLOAD VERIFICATION ");
+    console.log(" PURE GROUNDING PERSONA INTEGRATION TEST ");
+    console.log(" (No Simulated Dialogue - Only Database Data) ");
     console.log("====================================================\n");
 
     for (const persona of PERSONAS) {
-        console.log(`[TEST] Persona: ${persona.name} (${persona.id})`);
+        console.log(`\n>>> TESTING: ${persona.name} (${persona.id})`);
 
-        // 1. Fetch grounded data
+        // 1. Fetch grounded data ONLY
         const { data: storedPayload } = await supabase.rpc('get_claimant_intake_payload', {
             p_beneficiary_id: persona.id
         });
 
         if (!storedPayload) {
-            console.error(`  - Failed to fetch payload`);
+            console.error(`  - Failed to fetch grounded payload for ${persona.id}`);
             continue;
         }
 
-        // 2. Build EXHAUSTIVE Payload (Mirroring new src/lib/intakePayloadBuilder.ts logic)
+        // 2. Build Payload - STRICTLY using stored data
+        // We only add timing/ID bookkeeping, no content overrides
         const payload = {
             ...storedPayload,
-            case_id: `EXHAUSTIVE-TEST-${persona.id}-${Date.now()}`,
-            timestamp_utc: new Date().toISOString(),
-            decision_context: {
-                ...(storedPayload.decision_context || {}),
-                decision_type: persona.decision,
-                channel: "assisted"
-            },
-            structured_inputs: {
-                ...(storedPayload.structured_inputs || {}),
-                // Simulate live overrides
-                idv_status: "verified",
-                residency_status: "verified"
-            },
-            free_text: {
-                ...(storedPayload.free_text || {}),
-                claimant_message: persona.msg,
-                agent_chat_transcript_excerpt: `[user]: ${persona.msg}\n[assistant]: I understand you are facing hardship. I am checking your records.`,
-                caseworker_note: "EXHAUSTIVE GROUNDING VERIFICATION"
-            }
+            case_id: `PURE-VERIFY-${persona.id}-${Date.now()}`,
+            timestamp_utc: new Date().toISOString()
         };
 
-        console.log(`  - Payload Keys: ${Object.keys(payload).join(", ")}`);
-        console.log(`  - Structured Input Keys: ${Object.keys(payload.structured_inputs).join(", ")}`);
+        console.log("--- MCP PAYLOAD (PURE GROUNDING) ---");
+        console.log(JSON.stringify(payload, null, 2));
+        console.log("------------------------------------");
 
         // 3. Call Live MCP Gateway
         try {
@@ -105,13 +81,14 @@ async function runTest() {
                 const nested = tryParse(result.rationale);
                 const finalScore = nested ? nested.risk_score : (result.risk_score || 0);
 
-                console.log(`  - [GATEWAY] Decision: ${result.gateway_decision} | Score: ${finalScore}`);
-                console.log(`  - [RATIONALE] ${nested ? nested.rationale : result.rationale}`);
+                console.log(`\n  - [RESULT] Decision: ${result.gateway_decision}`);
+                console.log(`  - [RESULT] SLM Risk Score: ${finalScore}`);
+                console.log(`  - [RESULT] SLM Rationale: ${nested ? nested.rationale : result.rationale}`);
             }
         } catch (err) {
             console.error(`  - Network Error: ${err.message}`);
         }
-        console.log("----------------------------------------------------\n");
+        console.log("\n====================================================");
     }
 }
 

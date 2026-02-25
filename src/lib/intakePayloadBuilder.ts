@@ -125,33 +125,8 @@ function mapResidencyStatus(profile: ClaimantProfile): string {
   return "not_verified";
 }
 
-/** Reason codes that indicate missing or incomplete documentation. */
-const DOC_ISSUE_REASON_CODE_PATTERN =
-  /doc|evidence|upload|missing|submit/i;
 
-function mapDocsStatus(profile: ClaimantProfile): { docs_requested: string[]; docs_received: string[]; docs_quality: string } {
-  if (profile.pendingDecisions.length === 0) {
-    return { docs_requested: [], docs_received: [], docs_quality: "valid" };
-  }
-
-  const allCodes = profile.pendingDecisions.flatMap((d) => (d as { reasonCodes?: string[] }).reasonCodes ?? []);
-  const hasDocIssue = allCodes.some(
-    (c) =>
-      DOC_ISSUE_REASON_CODE_PATTERN.test(c),
-  );
-
-  const latestCode = (profile.pendingDecisions[0] as { decisionResultCode?: string } | undefined)?.decisionResultCode ?? "";
-
-  if (hasDocIssue) {
-    return { docs_requested: ["supporting_documents"], docs_received: [], docs_quality: "missing" };
-  }
-  if (latestCode === "APPROVED") {
-    return { docs_requested: [], docs_received: ["all_documents"], docs_quality: "valid" };
-  }
-  if (latestCode === "REJECTED") {
-    return { docs_requested: ["supporting_documents"], docs_received: [], docs_quality: "invalid" };
-  }
-
+function mapDocsStatus(_profile: ClaimantProfile): { docs_requested: string[]; docs_received: string[]; docs_quality: string } {
   return { docs_requested: [], docs_received: [], docs_quality: "valid" };
 }
 
@@ -166,30 +141,11 @@ function mapEngagementBarriers(profile: ClaimantProfile): { language_barrier: st
   };
 }
 
-/**
- * Reason codes that indicate a potential fraud signal.
- * Matches patterns like "fraud", "duplicate", "tamper", "mismatch", or "inconsist".
- */
-const FRAUD_REASON_CODE_PATTERN = /fraud|duplicate|tamper|mismatch|inconsist/i;
 
-function mapFraudSignals(profile: ClaimantProfile): { identity_duplicate_match: string; document_tampering: string } {
-  let identityDuplicateMatch = "none";
-  let documentTampering = "none";
-
-  for (const decision of profile.pendingDecisions) {
-    for (const code of (decision as { reasonCodes?: string[] }).reasonCodes ?? []) {
-      if (/duplicate|identity/i.test(code) && FRAUD_REASON_CODE_PATTERN.test(code)) {
-        identityDuplicateMatch = code.toLowerCase();
-      }
-      if (/tamper|mismatch|inconsist/i.test(code) && FRAUD_REASON_CODE_PATTERN.test(code)) {
-        documentTampering = code.toLowerCase();
-      }
-    }
-  }
-
+function mapFraudSignals(_profile: ClaimantProfile): { identity_duplicate_match: string; document_tampering: string } {
   return {
-    identity_duplicate_match: identityDuplicateMatch,
-    document_tampering: documentTampering,
+    identity_duplicate_match: "none",
+    document_tampering: "none",
   };
 }
 
@@ -198,84 +154,6 @@ function mapFraudSignals(profile: ClaimantProfile): { identity_duplicate_match: 
 // ──────────────────────────────────────────────────────────────────────────────
 
 const TRANSCRIPT_MESSAGES = 100;
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Harm signal keyword detector
-// ──────────────────────────────────────────────────────────────────────────────
-
-const HARM_KEYWORDS: Record<string, RegExp> = {
-  housing_risk: /\b(rent|evict|eviction|homeless|housing|landlord|mortgage|shelter)\b/i,
-  food_insecurity: /\b(food|hungry|hunger|starving|eat|meal|groceries)\b/i,
-  medical_access: /\b(medical|medicine|hospital|health|sick|illness|prescription|doctor)\b/i,
-  safety_risk: /\b(unsafe|violence|abuse|threat|danger|assault)\b/i,
-};
-
-/**
- * Scans the full conversation (all messages + current message) for harm signal
- * keywords and returns a note suitable for the caseworker_note field.
- */
-export function detectHarmSignals(
-  history: Array<{ role: string; content: string }>,
-  currentMessage: string,
-): string | undefined {
-  const allText = [...history.map((m) => m.content), currentMessage].join(" ");
-  const detected = Object.entries(HARM_KEYWORDS)
-    .filter(([, pattern]) => pattern.test(allText))
-    .map(([signal]) => signal);
-
-  if (detected.length === 0) return undefined;
-  return `Harm signals detected by pre-screening: ${detected.join(", ")}. Please factor these into the risk assessment.`;
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Context-aware claimant message builder
-// ──────────────────────────────────────────────────────────────────────────────
-
-/**
- * Patterns that indicate the current message is a meta/test phrase rather than
- * the substantive request that triggered the tool intent. These messages are
- * safe to ignore in favour of the most recent substantive user turn.
- */
-const META_MESSAGE_PATTERN =
-  /^(is it (working|fixed|ok)|test(?:ing)?|hello|hi|hey|ok|okay|yes|no|sure|thanks|thank you|retry|try again|again|done|got it|check|checking)\.?$/i;
-
-/**
- * Derives the authoritative claimant message to send to the gateway for risk
- * scoring. When the current message is a trivial meta-phrase (e.g. "is it
- * working now"), the tool was resolved from conversation history — so we use
- * the most recent substantive user turn instead. This prevents users from
- * bypassing the risk assessment by sending benign follow-up messages after a
- * high-risk request.
- *
- * Returns { claimantMessage, isContextInferred } where `isContextInferred`
- * signals that the message was pulled from history rather than the current turn.
- */
-export function buildContextualClaimantMessage(
-  history: Array<{ role: string; content: string }>,
-  currentMessage: string,
-): { claimantMessage: string; isContextInferred: boolean } {
-  const trimmed = currentMessage.trim();
-
-  // If the current message is substantive, use it directly
-  if (trimmed.length > 30 && !META_MESSAGE_PATTERN.test(trimmed)) {
-    return { claimantMessage: trimmed, isContextInferred: false };
-  }
-
-  // Current message is trivial — find the most recent substantive user turn
-  const userTurns = history
-    .filter((m) => m.role === "user" && m.content.trim().length > 10)
-    .map((m) => m.content.trim());
-
-  if (userTurns.length === 0) {
-    // No history — fall back to current message
-    return { claimantMessage: trimmed, isContextInferred: false };
-  }
-
-  // Concatenate up to the last 3 substantive user turns to give the gateway
-  // the full picture of what the user has been asking for
-  const substantive = userTurns.slice(-3).join(" | ");
-  return { claimantMessage: substantive, isContextInferred: true };
-}
 
 export function buildTranscriptExcerpt(
   history: Array<{ role: string; content: string }>,
@@ -286,6 +164,7 @@ export function buildTranscriptExcerpt(
   return recent.map((m) => `[${m.role}]: ${m.content}`).join("\n");
 }
 
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Main builder
 // ──────────────────────────────────────────────────────────────────────────────
@@ -293,8 +172,7 @@ export function buildTranscriptExcerpt(
 export interface BuildIntakePayloadOptions {
   /** Claimant profile from beneficiaryStore */
   profile: ClaimantProfile;
-  /** The authoritative user message for risk scoring (may differ from the raw
-   *  current-turn text when that turn was trivial and context was inferred) */
+  /** The verbatim user message */
   userMessage: string;
   /** Conversation history for transcript excerpt */
   history: Array<{ role: string; content: string }>;
@@ -304,10 +182,6 @@ export interface BuildIntakePayloadOptions {
   caseId?: string;
   /** ISO 3166-1 alpha-2 jurisdiction code (default "GB") */
   jurisdiction?: string;
-  /** When set, the userMessage was inferred from history because the literal
-   *  current turn was a trivial meta-phrase (this string). A caseworker_note
-   *  will be added alerting the gateway to this context-bypass risk. */
-  contextInferred?: string;
   /** Pre-stored intake payload from claimant_case table — merged as base, with live data overlaid */
   storedPayload?: Record<string, unknown> | null;
 }
@@ -325,27 +199,8 @@ export function buildIntakePayload(options: BuildIntakePayloadOptions): IntakePa
     toolName,
     caseId,
     jurisdiction = "GB",
-    contextInferred,
     storedPayload,
   } = options;
-
-  // 1. Build the base caseworker note from harm signals, then prepend a context-
-  // bypass warning if the tool intent was resolved from history rather than the
-  // current literal message. This is critical: the gateway MUST know that the
-  // actual request is in userMessage (from history), not the trivial turn text.
-  const harmNote = detectHarmSignals(history, userMessage);
-  let caseworkerNote: string | undefined;
-  if (contextInferred !== undefined) {
-    const bypassWarning =
-      `CONTEXT-INFERRED ACTION: The user's current literal message was ` +
-      `"${contextInferred}" (trivial/meta), but the tool "${toolName}" was ` +
-      `resolved from conversation history. The claimant_message reflects the ` +
-      `actual substantive request. Score risk based on the full context, not ` +
-      `the literal current turn.`;
-    caseworkerNote = harmNote ? `${bypassWarning} ${harmNote}` : bypassWarning;
-  } else {
-    caseworkerNote = harmNote;
-  }
 
   const raw = {
     // Start with the full historical payload from the database to preserve all custom fields
@@ -385,7 +240,6 @@ export function buildIntakePayload(options: BuildIntakePayloadOptions): IntakePa
       ...(storedPayload?.free_text as Record<string, unknown> || {}),
       claimant_message: userMessage,
       agent_chat_transcript_excerpt: buildTranscriptExcerpt(history),
-      ...(caseworkerNote ? { caseworker_note: caseworkerNote } : {}),
     },
 
     // Ensure harm signals are explicitly preserved at the top level

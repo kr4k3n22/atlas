@@ -27,20 +27,8 @@ export interface ClaimantProfile {
   currentApplicationStatus: string | null;
   currentApplicationRef: string | null;
   programs: string[];
-  incomeSummary: ClaimantIncomeSummary | null;
-  pendingDecisions: unknown[];
-  housingPayments: unknown[];
-  employerRecords: unknown[];
 }
 
-export interface ClaimantIncomeSummary {
-  claimantId: string;
-  currencyCode: string;
-  totalGross6mMinor: number;
-  totalNet6mMinor: number | null;
-  periodCount: number;
-  latestPeriodEnd: string | null;
-}
 
 export interface ApplicationStatus {
   applicationId: string;
@@ -106,28 +94,9 @@ export async function getClaimantProfile(
     currentApplicationStatus: (summary.decision_type as string | null) ?? null,
     currentApplicationRef: (summary.case_id as string | null) ?? null,
     programs: summary.benefit_type ? [summary.benefit_type as string] : [],
-    incomeSummary: null,
-    pendingDecisions: [],
-    housingPayments: [],
-    employerRecords: [],
   };
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// getClaimantIncomeSummary
-// ──────────────────────────────────────────────────────────────────────────────
-
-/**
- * Stub — income data is now embedded in the intake_payload JSONB stored in
- * app.claimant_case. Returns null until a dedicated extraction helper is added.
- *
- * @param _claimantId  Ignored (kept for API compatibility)
- */
-export async function getClaimantIncomeSummary(
-  _claimantId: string,
-): Promise<ClaimantIncomeSummary | null> {
-  return null;
-}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // getClaimantApplicationStatus
@@ -239,35 +208,6 @@ export function buildProfileContext(profile: ClaimantProfile): string {
 
   if (profile.programs.length > 0) {
     lines.push(`Programmes: ${profile.programs.join(", ")}`);
-  }
-
-  if (profile.incomeSummary) {
-    const gross = formatMinorAmount(
-      profile.incomeSummary.totalGross6mMinor,
-      profile.incomeSummary.currencyCode,
-    );
-    const net = profile.incomeSummary.totalNet6mMinor != null
-      ? formatMinorAmount(profile.incomeSummary.totalNet6mMinor, profile.incomeSummary.currencyCode)
-      : "not yet recorded";
-    lines.push(`Income (last 6 months, gross): ${gross}`);
-    lines.push(`Income (last 6 months, net): ${net}`);
-    lines.push(`Income periods recorded: ${profile.incomeSummary.periodCount}`);
-  } else {
-    lines.push("Income (last 6 months): not yet recorded");
-  }
-
-  if (profile.employerRecords.length > 0) {
-    lines.push("Employer records: on file");
-  }
-
-  if (profile.housingPayments.length > 0) {
-    lines.push("Housing payments: on file");
-  } else {
-    lines.push("Housing payments: not yet recorded");
-  }
-
-  if (profile.pendingDecisions.length > 0) {
-    lines.push(`Decisions: ${profile.pendingDecisions.length} recorded`);
   }
 
   return lines.join("\n");

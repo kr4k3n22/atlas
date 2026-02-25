@@ -13,7 +13,10 @@ Your mission:
   - continue_review
 - Send full structured context to the MCP Brain for final action determination.
 
-You do NOT execute final automation outcomes.
+# STRICT GROUNDING RULE
+- YOU ARE GROUNDED ONLY TO THE PROVIDED "CLAIMANT DATA" AND THE LITERAL CHAT HISTORY.
+- DO NOT HALLUCINATE ANY PROFILE DETAILS OR STATISTICAL DATA.
+- IF A FACT IS NOT IN THE PROVIDED CONTEXT, ASK THE USER. DO NOT INFER.
 
 # CONVERSATION STYLE
 - Use plain language.
@@ -194,7 +197,7 @@ export async function chatCompletion(
   const model = process.env.OPENAI_MODEL ?? "gpt-4o";
 
   const systemContent = claimantContext
-    ? `${ATLAS_SYSTEM_PROMPT}\n\n# CLAIMANT DATA (USE THIS; DO NOT HALLUCINATE)\nOnly use the data below. If a fact is missing, ask the user to provide it. Do not make up or assume any facts.\n\n${claimantContext}`
+    ? `${ATLAS_SYSTEM_PROMPT}\n\n# STALENESS & GROUNDING WARNING\n- YOU ARE GROUNDED ONLY TO THE DATA BELOW AND THE CHAT HISTORY.\n- IF A FACT IS NOT IN THE DATA BELOW, IT DOES NOT EXIST. DO NOT ASSUME OR INFER.\n- DO NOT PROVIDE OUT-OF-BAND KNOWLEDGE OR "AI SUMMARIES".\n\n# CLAIMANT DATA\n${claimantContext}`
     : ATLAS_SYSTEM_PROMPT;
 
   const chatMessages: ChatMessage[] = [
@@ -215,89 +218,6 @@ export async function chatCompletion(
   return content;
 }
 
-// ─── Enrichment helper ───────────────────────────────────────────────────────
-
-interface EnrichReasonContextParams {
-  claimantMessage: string;
-  beneficiaryId: string;
-  toolName: string;
-  harmSignals?: string;
-  claimantContext?: string;
-  transcriptExcerpt?: string;
-}
-
-/**
- * Uses OpenAI to generate a structured annotation for the claimant message.
- * Returns a combined string containing:
- *   - An AI-generated summary of the request, circumstances, tool action,
- *     harm signals, and beneficiary reference.
- *   - The full verbatim claimant message, so the case officer sees exactly
- *     what was said alongside the structured context.
- *
- * Format: `[AI Summary: <summary>] Full message: "<claimantMessage>"`
- *
- * Falls back to the raw `claimantMessage` on any failure so it never blocks
- * a gateway request.
- */
-export async function enrichReasonContext({
-  claimantMessage,
-  beneficiaryId,
-  toolName,
-  harmSignals,
-  claimantContext,
-  transcriptExcerpt,
-}: EnrichReasonContextParams): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return claimantMessage;
-  }
-
-  try {
-    const client = getClient();
-
-    const userContent = [
-      `Beneficiary ID: ${beneficiaryId}`,
-      `Tool/action requested: ${toolName}`,
-      `Claimant message: ${claimantMessage}`,
-      harmSignals ? `Detected harm signals: ${harmSignals}` : null,
-      claimantContext ? `Claimant profile context: ${claimantContext}` : null,
-      transcriptExcerpt ? `Transcript excerpt: ${transcriptExcerpt}` : null,
-    ]
-      .filter(Boolean)
-      .join("\n");
-
-    const response = await client.chat.completions.create(
-      {
-        model: "gpt-4o-mini",
-        temperature: 0.2,
-        max_tokens: 120,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a welfare case summariser. Given the data below, write a SINGLE detailed sentence " +
-              "for a case officer that summarises: what the claimant is requesting, why (their stated " +
-              "circumstances), what tool action is being triggered, what harm/hardship signals were detected, " +
-              "and the beneficiary reference. Output only the sentence — no preamble, no label prefix.",
-          },
-          { role: "user", content: userContent },
-        ],
-      },
-      { signal: AbortSignal.timeout(15_000) },
-    );
-
-    const summary = response.choices[0]?.message?.content?.trim();
-    if (summary && summary.length > 0) {
-      // Combine the AI summary annotation with the full verbatim user message
-      // so the case officer sees both structured context and exactly what was said.
-      return `[AI Summary: ${summary}] Full message: "${claimantMessage}"`;
-    }
-    return claimantMessage;
-  } catch (err) {
-    console.warn("[openaiClient] enrichReasonContext failed, falling back to raw message:", err);
-    return claimantMessage;
-  }
-}
 
 // ─── Function-calling tools (MCP tool definitions) ───────────────────────────
 
@@ -388,7 +308,7 @@ export async function chatWithTools(
   // Inject beneficiary context so ChatGPT can populate tool arguments correctly.
   let systemPrompt = `${ATLAS_SYSTEM_PROMPT}\n\nThe current user's beneficiary ID is: ${beneficiaryId}. Use this ID when calling tools unless the user explicitly provides a different one.`;
   if (claimantContext) {
-    systemPrompt += `\n\n# CLAIMANT DATA (USE THIS; DO NOT HALLUCINATE)\nOnly use the data below. If a fact is missing, ask the user to provide it. Do not make up or assume any facts.\n\n${claimantContext}`;
+    systemPrompt += `\n\n# STALENESS & GROUNDING WARNING\n- YOU ARE GROUNDED ONLY TO THE DATA BELOW AND THE CHAT HISTORY.\n- IF A FACT IS NOT IN THE DATA BELOW, IT DOES NOT EXIST. DO NOT ASSUME OR INFER.\n- DO NOT PROVIDE OUT-OF-BAND KNOWLEDGE OR "AI SUMMARIES".\n\n# CLAIMANT DATA\n${claimantContext}`;
   }
 
   const chatMessages: ChatMessage[] = [
