@@ -8,22 +8,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { createClient } from "@/lib/supabaseClient";
 
-const DEMO_CLAIMANTS = [
-  { id: "BEN-ATLAS-001", label: "Ella Gible — Clean Approve" },
-  { id: "BEN-ATLAS-002", label: "Alex Haitel — Escalate (Missing Docs / Hardship)" },
-  { id: "BEN-ATLAS-003", label: "Noah Chance — Clear Deny" },
-  { id: "BEN-ATLAS-004", label: "Reid Peet Van der Loop — Auto-Review Loop" },
-  { id: "BEN-ATLAS-005", label: "Ella Gible Copy — Clean Approve" },
-] as const;
+const DEMO_NAME_MAP: Record<string, string> = {
+  "ella gible": "BEN-ATLAS-001",
+  "alex haitel": "BEN-ATLAS-002",
+  "noah chance": "BEN-ATLAS-003",
+  "reid peet van der loop": "BEN-ATLAS-004",
+};
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -32,24 +24,20 @@ export default function RegisterPage() {
   const [displayName, setDisplayName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
-  const [beneficiaryId, setBeneficiaryId] = React.useState("");
   const [err, setErr] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
-    if (!beneficiaryId) {
-      setErr("Please select a claimant profile.");
-      return;
-    }
     setBusy(true);
     try {
+      const resolvedBeneficiaryId = DEMO_NAME_MAP[displayName.trim().toLowerCase()];
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { role: "user", displayName, beneficiary_id: beneficiaryId },
+          data: { role: "user", displayName, beneficiary_id: resolvedBeneficiaryId },
         },
       });
       if (error) throw error;
@@ -101,23 +89,6 @@ export default function RegisterPage() {
                   autoComplete="new-password"
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Claimant profile</Label>
-                <Select value={beneficiaryId} onValueChange={setBeneficiaryId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select your claimant profile…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DEMO_CLAIMANTS.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        <span className="font-mono text-xs text-muted-foreground mr-2">{c.id}</span>
-                        {c.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
               {err ? <p className="text-sm text-red-400">{err}</p> : null}
 
               <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white" disabled={busy}>
