@@ -57,6 +57,7 @@ ATLAS is a **Human-in-the-Loop (HITL) governance framework** for AI-assisted wel
 ## Key Features
 
 ### Citizen Chat Portal (`/chat`)
+
 - Conversational UI for welfare benefit queries (unemployment, claims, appeals)
 - Persistent chat history with conversation management (create, search, delete)
 - Automatic escalation of high-risk actions (claim submissions, record modifications)
@@ -64,6 +65,7 @@ ATLAS is a **Human-in-the-Loop (HITL) governance framework** for AI-assisted wel
 - Quick-prompt buttons for common queries
 
 ### Approver Dashboard (`/cases`)
+
 - Real-time case queue with live Supabase Realtime subscriptions + polling fallback
 - Risk triage: ROUTINE / ESCALATE / BLOCK labels with color-coded badges
 - Article 14 (Human Rights Act) risk detection and filtering
@@ -77,6 +79,7 @@ ATLAS is a **Human-in-the-Loop (HITL) governance framework** for AI-assisted wel
 - Configurable settings (theme, inbox defaults, notification preferences)
 
 ### Governance & Compliance
+
 - **NIST AI RMF Policy Engine** — Rule-based evaluation of welfare decisions against configurable policy rules
 - **Full audit trail** — Every case creation, decision, and action logged to `audit_log` table
 - **Gateway integration** — Bidirectional communication with Atlas-MCP-Gateway via Inngest events
@@ -84,6 +87,7 @@ ATLAS is a **Human-in-the-Loop (HITL) governance framework** for AI-assisted wel
 - **SLA enforcement** — Stale cases auto-expire; approaching-SLA cases surfaced to reviewers
 
 ### Authentication
+
 - Supabase Auth with cookie-based session persistence
 - Separate login flows for citizens (`/login`) and approvers (`/approver/login`)
 - Role-based access: approver accounts validated via `user_metadata.role`
@@ -258,8 +262,7 @@ The production schema is implemented as a set of idempotent SQL migration files 
 | `004_extensions.sql` | Enable `pgcrypto` and `citext` |
 | `005_schemas.sql` | Create `ref`, `app`, `audit`, `reporting` schemas |
 | `006_code_tables.sql` | All reference/lookup code tables |
-| `007_core_entities.sql` | `claimant`, `household`, `application`, `application_program` |
-| `008_fact_tables_identity_household.sql` | Address, identity, demographic eligibility facts |
+| `007_core_entities.sql` | `claimant`, `application`, `application_program` |
 | `009_fact_tables_income_employment.sql` | Employment, wage, earned income, benefit facts |
 | `010_fact_tables_assets_expenses_hardship.sql` | Bank accounts, assets, expenses, hardship indicators |
 | `011_evidence_tables.sql` | Document evidence, extracted fields, field links |
@@ -322,8 +325,6 @@ VALUES ('UC_INCOME_THRESHOLD', 2, 'universal_credit', 'Updated UC income thresho
 | `action_executions` | Records of executed actions |
 | `conversations` | Chat conversation metadata |
 | `chat_messages` | Individual chat messages |
-
-
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -412,11 +413,13 @@ VALUES ('UC_INCOME_THRESHOLD', 2, 'universal_credit', 'Updated UC income thresho
 ## User Roles
 
 ### Citizen (End User)
+
 - Accesses `/chat` to interact with the welfare services chatbot
 - Registers and logs in via `/login` and `/register`
 - Receives real-time updates when an approver acts on their escalated request
 
 ### Approver (HITL Reviewer)
+
 - Accesses `/cases` to review the case queue
 - Logs in via `/approver/login` (role validated via `user_metadata.role === "approver"`)
 - Makes three types of decisions:
@@ -433,14 +436,14 @@ VALUES ('UC_INCOME_THRESHOLD', 2, 'universal_credit', 'Updated UC income thresho
 
 Before every AI response, the chat route queries the welfare-claims SQL schema via `src/lib/beneficiaryStore.ts` to look up the claimant's profile:
 
-1. **Profile lookup** — `getClaimantProfile(beneficiaryId)` queries `app.claimant`, joined with household, employment, income, and application data via the `external_claimant_ref` (e.g. `BEN-ATLAS-001`)
+1. **Profile lookup** — `getClaimantProfile(beneficiaryId)` queries `app.claimant_case` to retrieve the grounded persona baseline.
 2. **Context injection** — if a profile is found, `buildProfileContext()` formats a summary string that is injected into the OpenAI system prompt
 3. **No-hallucination instruction** — the system prompt includes: _"Only use the provided claimant data. If information is missing, ask the user to provide it. Do not make up or assume any facts."_
 4. **Missing profile** — if no records are found, the agent explicitly tells the user it cannot find their records and asks them to confirm their reference or provide identifying information
 
 The context block injected into the system prompt includes:
+
 - Claimant name and external reference
-- Household size
 - Current employment status
 - Total earned income (last 6 months, GBP)
 - Current application status and programmes
@@ -491,5 +494,3 @@ When the Gateway is not configured, the chat API uses regex-based pattern matchi
 ## License
 
 This project is currently unlicensed. Contact the maintainers for usage terms.
-
-

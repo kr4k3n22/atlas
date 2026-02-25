@@ -10,7 +10,7 @@ async function run() {
         { email: 'ella_gible@yahoo.com', bid: 'BEN-ATLAS-001' },
         { email: 'alex_haitel@gmail.com', bid: 'BEN-ATLAS-002' },
         { email: 'noah_chance@gmail.com', bid: 'BEN-ATLAS-003' },
-        { email: 'Reid_Peet_Van_der_Loop@vanderloop.com', bid: 'BEN-ATLAS-004' }
+        { email: 'reid_peet_van_der_loop@vanderloop.com', bid: 'BEN-ATLAS-004' }
     ];
 
     const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
@@ -72,7 +72,7 @@ async function run() {
             claimant_name: 'Alex Haitel',
             scenario_id: 'alex_escalate_missing_docs',
             label: 'Escalate — Missing Employer Docs + Livelihood Risk',
-            description: 'Alex declared unemployment after redundancy but lacks required documentation and the employer report is not received. Despite otherwise clear eligibility signals, imminent livelihood risk requires mandatory human escalation.',
+            description: 'Alex declared unemployment after redundancy but lacks required documentation and the employer report is not received. Despite otherwise clear eligibility signals, imminent livelihood risk requires mandatory human escalation under Article 14 oversight.',
             intake_payload: {
                 case_id: 'DEMO-APPROVE-002',
                 timestamp_utc: '2026-01-02T15:05:00Z',
@@ -103,7 +103,7 @@ async function run() {
             claimant_name: 'Noah Chance',
             scenario_id: 'noah_chance_clear_deny',
             label: 'Ineligible — Insufficient Contributions (No Harm Signals)',
-            description: "Claimant's fixed-term contract ended and a renewal was declined. Contribution history is insufficient to qualify for unemployment benefits. Clear statutory ineligibility requires denial.",
+            description: "Claimant's fixed-term contract ended and a renewal was declined. Contribution history is insufficient to qualify for unemployment benefits. No hardship or rights-impact signals are present. Clear statutory ineligibility requires denial without human escalation.",
             intake_payload: {
                 case_id: 'DEMO-DENY-003',
                 timestamp_utc: '2026-01-03T09:15:00Z',
@@ -125,8 +125,8 @@ async function run() {
                     engagement_barriers: { language_barrier: 'none', digital_access: 'good', disability_accommodation_needed: 'no' },
                     fraud_signals: { identity_duplicate_match: 'none', device_or_address_reuse: 'none', document_tampering: 'none' }
                 },
-                free_text: { claimant_message: 'My fixed-term contract ended and I was offered another contract, which I chose not to accept. I have insufficient contribution history. I am financially stable and not experiencing hardship.', agent_chat_transcript_excerpt: 'Fixed-term contract concluded. Renewal was offered and declined. Contribution history below statutory minimum threshold.', caseworker_note: 'Clear statutory ineligibility due to insufficient contribution history.' },
-                harm_rights_signals: { signal_level: 'none', signal_type: [], signal_source: 'system', notes: 'No indicators of livelihood risk, dependents, disability, or fundamental rights impact.' }
+                free_text: { claimant_message: 'My fixed-term contract ended and I was offered another contract, which I chose not to accept. I have insufficient contribution history. I am financially stable and not experiencing hardship. I am only seeking clarification on eligibility.', agent_chat_transcript_excerpt: 'Fixed-term contract concluded. Renewal was offered and declined. Contribution history below statutory minimum threshold. All documentation verified.', caseworker_note: 'Clear statutory ineligibility due to insufficient contribution history. No hardship signals present.' },
+                harm_rights_signals: { signal_level: 'none', signal_type: [], signal_source: 'system', notes: 'No indicators of livelihood risk, dependents, disability, or fundamental rights impact requiring human oversight.' }
             }
         },
         {
@@ -134,7 +134,7 @@ async function run() {
             claimant_name: 'Reid Peet Van der Loop',
             scenario_id: 'reid_peet_van_der_loop_auto_review',
             label: 'Auto-Review (Loop: MCP ↔ Chatbot for missing info)',
-            description: 'Claimant appears potentially eligible but key elements cannot be confirmed. No harm/rights-impact signals. Case must remain in an automated review loop.',
+            description: 'Claimant appears potentially eligible but key statutory elements cannot be confirmed from available inputs. No harm/rights-impact signals are present. Case must remain in an automated review loop where the chatbot gathers missing information and resubmits to the MCP Brain until eligibility can be determined (approve/deny) or escalated if risk signals emerge.',
             intake_payload: {
                 case_id: 'DEMO-REVIEW-004',
                 timestamp_utc: '2026-01-03T10:05:00Z',
@@ -156,8 +156,8 @@ async function run() {
                     engagement_barriers: { language_barrier: 'none', digital_access: 'good', disability_accommodation_needed: 'no' },
                     fraud_signals: { identity_duplicate_match: 'none', device_or_address_reuse: 'none', document_tampering: 'none' }
                 },
-                free_text: { claimant_message: "I left my job last month and I'm currently not working. I'm not sure what you need from my employer.", agent_chat_transcript_excerpt: 'IDV and residency verified. Claimant reports unemployment after voluntary resignation. Contribution status and recent earnings cannot be confirmed.', caseworker_note: 'Do not escalate. Route to chatbot for targeted clarification and document collection.' },
-                harm_rights_signals: { signal_level: 'none', signal_type: [], signal_source: 'system', notes: 'No indicators of livelihood risk or rights-impact. Remain in automated review loop.' }
+                free_text: { claimant_message: "I left my job last month and I'm currently not working. I'm not sure what you need from my employer, and I can upload whatever documents you require.", agent_chat_transcript_excerpt: 'IDV and residency verified. Claimant reports unemployment after voluntary resignation. Contribution status and recent earnings cannot be confirmed from provided records. Employer report not yet received. Partial income verification; additional documents required to determine eligibility.', caseworker_note: 'Do not escalate. Route to chatbot for targeted clarification and document collection; resubmit to MCP Brain after each response until statutory eligibility can be determined.' },
+                harm_rights_signals: { signal_level: 'none', signal_type: [], signal_source: 'system', notes: 'No indicators of livelihood risk, dependents, disability, coercion, or other fundamental-rights impact requiring human oversight at this time. Remain in automated review loop unless risk signals emerge.' }
             }
         }
     ];

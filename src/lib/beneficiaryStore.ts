@@ -23,7 +23,6 @@ export interface ClaimantProfile {
   fullName: string;
   dateOfBirth: string | null;
   employmentStatus: string | null;
-  householdSize: number;
   currentApplicationStatus: string | null;
   currentApplicationRef: string | null;
   programs: string[];
@@ -38,20 +37,6 @@ export interface ApplicationStatus {
   programs: string[];
 }
 
-export interface HouseholdContext {
-  householdId: string | null;
-  householdRef: string | null;
-  postcode: string | null;
-  town: string | null;
-  members: HouseholdMember[];
-}
-
-export interface HouseholdMember {
-  claimantId: string;
-  fullName: string;
-  relationshipToPrimary: string;
-  isPrimary: boolean;
-}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // getClaimantProfile
@@ -90,7 +75,6 @@ export async function getClaimantProfile(
     fullName: summary.claimant_name as string,
     dateOfBirth,
     employmentStatus,
-    householdSize: 1,
     currentApplicationStatus: (summary.decision_type as string | null) ?? null,
     currentApplicationRef: (summary.case_id as string | null) ?? null,
     programs: summary.benefit_type ? [summary.benefit_type as string] : [],
@@ -126,51 +110,6 @@ export async function getClaimantApplicationStatus(
   };
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// getClaimantHouseholdContext
-// ──────────────────────────────────────────────────────────────────────────────
-
-/**
- * Returns household composition and dependency info for a claimant.
- * Reads from the intake_payload JSONB stored in app.claimant_case.
- *
- * @param beneficiaryId  External reference (e.g. "BEN-ATLAS-001")
- */
-export async function getClaimantHouseholdContext(
-  beneficiaryId: string,
-): Promise<HouseholdContext> {
-  const empty: HouseholdContext = {
-    householdId: null,
-    householdRef: null,
-    postcode: null,
-    town: null,
-    members: [],
-  };
-
-  const { data: payload, error } = await supabaseAdmin
-    .rpc("get_claimant_intake_payload", { p_beneficiary_id: beneficiaryId });
-
-  if (error || !payload) return empty;
-
-  const p = payload as Record<string, unknown>;
-  const household = (p.household ?? {}) as Record<string, unknown>;
-  const rawMembers = Array.isArray(household.members) ? household.members : [];
-
-  const members: HouseholdMember[] = rawMembers.map((m: Record<string, unknown>) => ({
-    claimantId: (m.claimant_id as string | undefined) ?? "",
-    fullName: (m.full_name as string | undefined) ?? "",
-    relationshipToPrimary: (m.relationship_to_primary as string | undefined) ?? "primary",
-    isPrimary: (m.is_primary as boolean | undefined) ?? false,
-  }));
-
-  return {
-    householdId: (household.household_id as string | null) ?? null,
-    householdRef: (household.household_ref as string | null) ?? null,
-    postcode: (household.postcode as string | null) ?? null,
-    town: (household.town as string | null) ?? null,
-    members,
-  };
-}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Formatting helpers for building system-prompt context strings
@@ -196,7 +135,6 @@ export function buildProfileContext(profile: ClaimantProfile): string {
   const lines: string[] = [
     `Claimant: ${profile.fullName} (ref: ${profile.externalRef})`,
     `Date of birth: ${profile.dateOfBirth ?? "not yet recorded"}`,
-    `Household size: ${profile.householdSize}`,
     `Employment status: ${profile.employmentStatus ?? "not yet recorded"}`,
   ];
 
