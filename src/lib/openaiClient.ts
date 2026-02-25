@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+// Deployment trigger: Reverting to high-fidelity grounding state
 
 export const ATLAS_SYSTEM_PROMPT = `# ROLE & MISSION
 You are a welfare claims intake assistant.
