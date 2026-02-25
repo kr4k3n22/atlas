@@ -77,8 +77,18 @@ export async function POST(req: NextRequest) {
 
   const user = await getAuthUser(req.headers.get("cookie") ?? "");
 
-  // Resolve beneficiary ID from user profile or default
-  const beneficiaryId = (user?.user_metadata?.beneficiary_id as string | undefined) ?? "BEN-ATLAS-001";
+  // Resolve beneficiary ID from user metadata — must be explicitly set at registration
+  const beneficiaryId = user?.user_metadata?.beneficiary_id as string | undefined;
+  if (!beneficiaryId) {
+    return NextResponse.json(
+      {
+        reply:
+          "Your account does not have a claimant profile linked. " +
+          "Please update your profile in Settings to select your claimant reference before using the chat.",
+      },
+      { status: 422 },
+    );
+  }
 
   // Resolve / create conversation for persistence
   let conversationId = incomingConvId ?? null;

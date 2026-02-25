@@ -134,13 +134,13 @@ function mapDocsStatus(profile: ClaimantProfile): { docs_requested: string[]; do
     return { docs_requested: [], docs_received: [], docs_quality: "valid" };
   }
 
-  const allCodes = profile.pendingDecisions.flatMap((d) => d.reasonCodes);
+  const allCodes = profile.pendingDecisions.flatMap((d) => (d as { reasonCodes?: string[] }).reasonCodes ?? []);
   const hasDocIssue = allCodes.some(
     (c) =>
       DOC_ISSUE_REASON_CODE_PATTERN.test(c),
   );
 
-  const latestCode = profile.pendingDecisions[0]?.decisionResultCode ?? "";
+  const latestCode = (profile.pendingDecisions[0] as { decisionResultCode?: string } | undefined)?.decisionResultCode ?? "";
 
   if (hasDocIssue) {
     return { docs_requested: ["supporting_documents"], docs_received: [], docs_quality: "missing" };
@@ -177,7 +177,7 @@ function mapFraudSignals(profile: ClaimantProfile): { identity_duplicate_match: 
   let documentTampering = "none";
 
   for (const decision of profile.pendingDecisions) {
-    for (const code of decision.reasonCodes) {
+    for (const code of (decision as { reasonCodes?: string[] }).reasonCodes ?? []) {
       if (/duplicate|identity/i.test(code) && FRAUD_REASON_CODE_PATTERN.test(code)) {
         identityDuplicateMatch = code.toLowerCase();
       }
