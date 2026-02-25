@@ -20,6 +20,7 @@ import { createClient } from "@/lib/supabaseClient";
 import { sanitizeRationale } from "@/lib/mcpClient";
 import { toast } from "sonner";
 import DecisionTrace, { type DecisionTraceData } from "@/components/DecisionTrace";
+import ChatMarkdown from "@/components/ChatMarkdown";
 import { APPROVER_SLUGS, APPROVERS } from "@/lib/approvers";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -951,7 +952,7 @@ export default function ChatPage() {
                 </div>
                 <div>
                   <h1 className="text-2xl font-semibold mb-1">
-                    Hello{displayName ? `, ${displayName}` : ""}
+                    Hello{displayName ? `, ${displayName.split(" ")[0]}` : ""}
                   </h1>
                   <p className="text-muted-foreground">How can I help with your welfare benefits today?</p>
                 </div>
@@ -1004,7 +1005,7 @@ export default function ChatPage() {
                     {msgEscalation ? (
                       <EscalationCard escalation={msgEscalation} timestamp={msg.created_at} />
                     ) : (
-                      <p className="whitespace-pre-wrap">{stripInlineJson(msg.content)}</p>
+                      <ChatMarkdown text={stripInlineJson(msg.content)} />
                     )}
                     {msg.role === "assistant" && msg.decision_trace && (
                       <DecisionTrace trace={msg.decision_trace} />
