@@ -315,7 +315,14 @@ export async function POST(req: NextRequest) {
         try {
           const confirmation = await chatCompletion(
             effectiveHistory,
-            `The user requested: "${message}". The ATLAS system returned the following result: "${result.reply}". Provide a friendly, concise confirmation to the claimant based on this outcome.`,
+            `The user requested: "${message}". \n\n` +
+            `### AUTHORITATIVE RESULT ###\n` +
+            `The ATLAS system (Governance) has returned the following official result: "${result.reply}". \n\n` +
+            `### INSTRUCTIONS ###\n` +
+            `- Provide a friendly, concise confirmation to the claimant based EXCLUSIVELY on the result above.\n` +
+            `- If this result contradicts the static "CLAIMANT DATA" (e.g., the data says they are approved but the system says they are still being reviewed), you MUST prioritize the system result.\n` +
+            `- Do NOT mention the static data if it conflicts.\n` +
+            `- Be neutral and empathetic.`,
             claimantContextBlock ?? undefined,
           );
           // Strip any JSON the AI model may have appended via its output protocol
