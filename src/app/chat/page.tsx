@@ -63,9 +63,46 @@ type ConversationCaseStatus = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Strip any embedded JSON objects from a chat message before display. */
+/** Strip any embedded JSON objects from a chat message before display.
+ * Uses an iterative approach to handle arbitrary nesting depth. */
 function stripInlineJson(text: string): string {
-  return text.replace(/\s*\{(?:[^{}]|\{[^{}]*\})*\}\s*/g, " ").replace(/\s{2,}/g, " ").trim();
+  let result = text;
+  let prev = "";
+  // Repeatedly strip the innermost {…} blocks until none remain
+  while (prev !== result) {
+    prev = result;
+    result = result.replace(/\s*\{[^{}]*\}\s*/g, " ");
+  }
+  return result.replace(/\s{2,}/g, " ").trim();
+}
+
+/** Try to recover EscalationMeta from message content as a fallback when
+ * metadata.escalation was not persisted. Only matches if the embedded JSON
+ * contains both a `case_id` and a gateway-specific field (`risk_label` or
+ * `risk_score`) so we don't accidentally match the AI's own intake JSON. */
+function tryParseEscalationFromContent(content: string): EscalationMeta | null {
+  const match = /\{[\s\S]*\}/.exec(content);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[0]) as Record<string, unknown>;
+    if (
+      typeof parsed.case_id === "string" &&
+      (typeof parsed.risk_label === "string" || typeof parsed.risk_score === "number")
+    ) {
+      return {
+        case_id: parsed.case_id,
+        risk_score: typeof parsed.risk_score === "number" ? parsed.risk_score : undefined,
+        risk_label: typeof parsed.risk_label === "string" ? parsed.risk_label : undefined,
+        risk_rationale: typeof parsed.risk_rationale === "string" ? parsed.risk_rationale : undefined,
+        policy_refs: Array.isArray(parsed.policy_refs) ? parsed.policy_refs as string[] : undefined,
+        recommended_action: typeof parsed.recommended_action === "string" ? parsed.recommended_action : undefined,
+        timestamp: typeof parsed.timestamp === "string" ? parsed.timestamp : undefined,
+      };
+    }
+  } catch {
+    // Not valid JSON or doesn't contain escalation fields
+  }
+  return null;
 }
 
 /** Format a date string as DD/MM/YYYY HH:mm:ss */
@@ -992,7 +1029,10 @@ export default function ChatPage() {
             {/* Messages */}
             {messages.map((msg) => {
               // Use persisted metadata to determine if this is an escalation message.
-              const msgEscalation = msg.role === "assistant" ? (msg.metadata?.escalation ?? null) : null;
+              // Fall back to parsing escalation fields from the message content if metadata is absent.
+              const msgEscalation = msg.role === "assistant"
+                ? (msg.metadata?.escalation ?? tryParseEscalationFromContent(msg.content))
+                : null;
 
               return (
                 <div

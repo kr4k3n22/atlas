@@ -9,6 +9,18 @@ import { buildIntakePayload, validateIntakePayload, buildTranscriptExcerpt, getS
 
 type Message = { role: "user" | "assistant"; content: string };
 
+/** Strip any embedded JSON objects from a text string.
+ * Iterates until no more top-level or nested {…} blocks remain. */
+function stripInlineJson(text: string): string {
+  let result = text;
+  let prev = "";
+  while (prev !== result) {
+    prev = result;
+    result = result.replace(/\s*\{[^{}]*\}\s*/g, " ");
+  }
+  return result.replace(/\s{2,}/g, " ").trim();
+}
+
 interface ChatRequest {
   message: string;
   history?: Message[];
@@ -176,7 +188,8 @@ export async function POST(req: NextRequest) {
       if (aiResult.type === "tool_call") {
         toolCall = { name: aiResult.name, arguments: aiResult.arguments };
       } else {
-        openaiDirectReply = aiResult.content;
+        // Strip any JSON the AI appended via its output protocol before storing
+        openaiDirectReply = stripInlineJson(aiResult.content);
       }
     } catch (err) {
       console.error("[chat/route] OpenAI function-calling error, falling back to regex:", err);
@@ -276,11 +289,13 @@ export async function POST(req: NextRequest) {
         // new system prompt's governance knowledge.
         if (hasOpenAI && result.risk_label === "BLOCK") {
           try {
-            result.reply = await chatCompletion(
+            const explanation = await chatCompletion(
               effectiveHistory,
               `The user requested: "${message}". The ATLAS Governor has BLOCKED this request. Reason: "${result.risk_rationale ?? result.reply}". Explain this empathetically to the claimant, cite the Human Oversight requirement, and let them know their request is under review by a case officer.`,
               claimantContextBlock ?? undefined,
             );
+            // Strip any JSON the AI model may have appended via its output protocol
+            result.reply = stripInlineJson(explanation);
           } catch {
             // Keep the existing reply on error.
           }
@@ -288,11 +303,13 @@ export async function POST(req: NextRequest) {
       } else if (!result.escalated && !result.transient_error && hasOpenAI) {
         // Allow path — pass the MCP result to ChatGPT for a friendly confirmation.
         try {
-          result.reply = await chatCompletion(
+          const confirmation = await chatCompletion(
             effectiveHistory,
             `The user requested: "${message}". The ATLAS system returned the following result: "${result.reply}". Provide a friendly, concise confirmation to the claimant based on this outcome.`,
             claimantContextBlock ?? undefined,
           );
+          // Strip any JSON the AI model may have appended via its output protocol
+          result.reply = stripInlineJson(confirmation);
         } catch {
           // Keep the existing reply on error.
         }
