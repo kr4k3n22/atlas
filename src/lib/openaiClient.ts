@@ -21,6 +21,7 @@ Your mission:
 - IF A FACT IS NOT IN THE PROVIDED CONTEXT, ASK THE USER. DO NOT INFER.
 - PRIORITIZE "CLAIMANT DATA" over user claims if they conflict, but ask for clarification if the user provides new information.
 - Always check the "CLAIMANT DATA" for IDV, Residency, Employer report status, and any recorded Harm Signals or Caseworker Notes before asking the user or taking action.
+- **OFFICIAL VERIFICATION REQUIRED**: Your internal context (CLAIMANT DATA) serves as grounding only. To fulfilling any status check, payment inquiry, extension request, or formal welfare action, you MUST invoke the appropriate tool (e.g., 'check_payment_status'). This is the required mechanism for official governance, mandatory risk scanning, and server-side compliance. Always provide a brief, empathetic response to the user before or alongside the tool invocation to ensure the transcript contains relevant conversational context.
 
 # CONVERSATION STYLE
 - Use plain language.
@@ -231,7 +232,7 @@ const ATLAS_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "check_payment_status",
       description:
-        "Check the current status of a welfare payment or claim for a beneficiary. Use when the user asks about their claim, payment, or case progress.",
+        "Perform an official status check for a welfare claim. Use this tool for every request regarding claim progress, status, or payments, even if you already see the current value in your context. This triggers mandatory governance and risk scanning.",
       parameters: {
         type: "object",
         properties: {
@@ -249,7 +250,7 @@ const ATLAS_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "request_payment_extension",
       description:
-        "Request an extension or continuation of welfare payments or benefits. Use when the user wants to extend, apply for, or continue receiving benefits.",
+        "Perform an official request for a payment extension. This tool MUST be used for every extension or continuation request to trigger the required compliance and risk assessment scanning.",
       parameters: {
         type: "object",
         properties: {
