@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAuthUser } from "@/lib/getAuthUser";
-import { callMcpTool, callIntake } from "@/lib/mcpClient";
+import { callMcpTool, callIntake, extractInlineJson } from "@/lib/mcpClient";
 import { createCase } from "@/lib/caseStore";
 import { chatCompletion, chatWithTools } from "@/lib/openaiClient";
 import { getClaimantProfile, buildProfileContext } from "@/lib/beneficiaryStore";
@@ -181,12 +181,24 @@ export async function POST(req: NextRequest) {
   // Otherwise fall back to regex pattern matching.
   let toolCall: ToolCall | null = null;
   let openaiDirectReply: string | null = null;
+  let assistantContentOverride: string | undefined = undefined;
 
   if (hasOpenAI) {
     try {
-      const aiResult = await chatWithTools(effectiveHistory, message, beneficiaryId, claimantContextBlock ?? undefined);
+      // Step 1: Detect specific tool intent locally via regex
+      const localTool = mapMessageToTool(message, beneficiaryId);
+
+      const aiResult = await chatWithTools(
+        effectiveHistory,
+        message,
+        beneficiaryId,
+        claimantContextBlock ?? undefined,
+        localTool?.name // Force the tool if detected locally
+      );
+
       if (aiResult.type === "tool_call") {
         toolCall = { name: aiResult.name, arguments: aiResult.arguments };
+        assistantContentOverride = aiResult.content;
       } else {
         // Strip any JSON the AI appended via its output protocol before storing
         openaiDirectReply = stripInlineJson(aiResult.content);
@@ -225,6 +237,15 @@ export async function POST(req: NextRequest) {
       if (claimantProfile) {
         const storedPayload = await getStoredIntakePayload(beneficiaryId).catch(() => null);
 
+        // Extract decision_type from assistantContentOverride if available
+        let decisionTypeOverride: any = undefined;
+        if (assistantContentOverride) {
+          const { jsonData } = extractInlineJson(assistantContentOverride);
+          if (jsonData?.decision_type) {
+            decisionTypeOverride = jsonData.decision_type;
+          }
+        }
+
         const intakePayload = buildIntakePayload({
           profile: claimantProfile,
           userMessage: message,
@@ -232,6 +253,7 @@ export async function POST(req: NextRequest) {
           toolName: toolCall.name,
           caseId: conversationId ?? undefined,
           storedPayload,
+          decisionType: decisionTypeOverride,
         });
 
         const validation = validateIntakePayload(intakePayload);
@@ -305,7 +327,14 @@ export async function POST(req: NextRequest) {
         try {
           const confirmation = await chatCompletion(
             effectiveHistory,
-            `The user requested: "${message}". The ATLAS system returned the following result: "${result.reply}". Provide a friendly, concise confirmation to the claimant based on this outcome.`,
+            `The user requested: "${message}". \n\n` +
+            `### AUTHORITATIVE RESULT ###\n` +
+            `The ATLAS system (Governance) has returned the following official result: "${result.reply}". \n\n` +
+            `### INSTRUCTIONS ###\n` +
+            `- Provide a friendly, concise confirmation to the claimant based EXCLUSIVELY on the result above.\n` +
+            `- If this result contradicts the static "CLAIMANT DATA" (e.g., the data says they are approved but the system says they are still being reviewed), you MUST prioritize the system result.\n` +
+            `- Do NOT mention the static data if it conflicts.\n` +
+            `- Be neutral and empathetic.`,
             claimantContextBlock ?? undefined,
           );
           // Strip any JSON the AI model may have appended via its output protocol

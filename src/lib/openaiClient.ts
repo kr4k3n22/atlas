@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+// Deployment trigger: Reverting to high-fidelity grounding state
 
 export const ATLAS_SYSTEM_PROMPT = `# ROLE & MISSION
 You are a welfare claims intake assistant.
@@ -15,8 +16,18 @@ Your mission:
 
 # STRICT GROUNDING RULE
 - YOU ARE GROUNDED ONLY TO THE PROVIDED "CLAIMANT DATA" AND THE LITERAL CHAT HISTORY.
+- "CLAIMANT DATA" contains verified records, including residency, IDV, employer reports, harm signals, and caseworker notes.
 - DO NOT HALLUCINATE ANY PROFILE DETAILS OR STATISTICAL DATA.
 - IF A FACT IS NOT IN THE PROVIDED CONTEXT, ASK THE USER. DO NOT INFER.
+- PRIORITIZE "CLAIMANT DATA" over user claims if they conflict, but ask for clarification if the user provides new information.
+- Always check the "CLAIMANT DATA" for IDV, Residency, Employer report status, and any recorded Harm Signals or Caseworker Notes before asking the user or taking action.
+- **OFFICIAL VERIFICATION REQUIRED**: Your internal context (CLAIMANT DATA) serves as grounding only. To fulfilling any status check, payment inquiry, extension request, or formal welfare action, you MUST invoke the appropriate tool (e.g., 'check_payment_status'). This is the required mechanism for official governance, mandatory risk scanning, and server-side compliance. Always provide a brief, empathetic response to the user before or alongside the tool invocation to ensure the transcript contains relevant conversational context.
+
+# DATA HIERARCHY & AUTHORITY (CRITICAL)
+- **TOOL RESULTS ARE THE TRUTH**: Results returned from tool invocations (e.g., the output of 'check_payment_status') represent the LIVE, AUTHORITATIVE state of the system.
+- **OVERRIDE STATIC DATA**: If a tool result conflicts with the "CLAIMANT DATA" grounding (e.g., the tool says "continue_review" but the data record says "approved"), you MUST use the tool result. 
+- The static "CLAIMANT DATA" is a snapshot; the tool result is the current legal and procedural reality.
+- Never inform a user they are "Approved" or "Denied" if the latest tool result indicates a different status.
 
 # CONVERSATION STYLE
 - Use plain language.
@@ -227,7 +238,7 @@ const ATLAS_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "check_payment_status",
       description:
-        "Check the current status of a welfare payment or claim for a beneficiary. Use when the user asks about their claim, payment, or case progress.",
+        "Perform an official status check for a welfare claim. Use this tool for every request regarding claim progress, status, or payments, even if you already see the current value in your context. This triggers mandatory governance and risk scanning.",
       parameters: {
         type: "object",
         properties: {
@@ -245,7 +256,7 @@ const ATLAS_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "request_payment_extension",
       description:
-        "Request an extension or continuation of welfare payments or benefits. Use when the user wants to extend, apply for, or continue receiving benefits.",
+        "Perform an official request for a payment extension. This tool MUST be used for every extension or continuation request to trigger the required compliance and risk assessment scanning.",
       parameters: {
         type: "object",
         properties: {
@@ -288,7 +299,7 @@ const ATLAS_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
 ];
 
 export type ChatWithToolsResult =
-  | { type: "tool_call"; name: string; arguments: Record<string, unknown> }
+  | { type: "tool_call"; name: string; arguments: Record<string, unknown>; content?: string }
   | { type: "message"; content: string };
 
 /**
@@ -301,6 +312,7 @@ export async function chatWithTools(
   userMessage: string,
   beneficiaryId: string,
   claimantContext?: string,
+  forceToolName?: string,
 ): Promise<ChatWithToolsResult> {
   const client = getClient();
   const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
@@ -317,11 +329,16 @@ export async function chatWithTools(
     { role: "user", content: userMessage },
   ];
 
+  // If a tool is forced (e.g. by local regex), we use required tool_choice.
+  const toolChoice: any = forceToolName
+    ? { type: "function", function: { name: forceToolName } }
+    : "auto";
+
   const response = await client.chat.completions.create({
     model,
     messages: chatMessages,
     tools: ATLAS_TOOLS,
-    tool_choice: "auto",
+    tool_choice: toolChoice,
   });
 
   const choice = response.choices[0];
@@ -339,7 +356,12 @@ export async function chatWithTools(
       } catch {
         args = {};
       }
-      return { type: "tool_call", name: toolCall.function.name, arguments: args };
+      return {
+        type: "tool_call",
+        name: toolCall.function.name,
+        arguments: args,
+        content: choice.message.content ?? undefined,
+      };
     }
   }
 

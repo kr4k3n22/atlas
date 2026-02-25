@@ -170,7 +170,7 @@ export async function callMcpTool(
  * Extract the first embedded JSON object from a text string.
  * Returns the clean text (with the JSON block removed) and the parsed JSON data.
  */
-function extractInlineJson(text: string): { cleanText: string; jsonData: Record<string, unknown> | null } {
+export function extractInlineJson(text: string): { cleanText: string; jsonData: Record<string, unknown> | null } {
   const match = text.match(/\{(?:[^{}]|\{[^{}]*\})*\}/);
   if (!match) return { cleanText: text.trim(), jsonData: null };
   try {
@@ -224,12 +224,12 @@ function parseGatewayResult(
     const caseId = typeof data.case_id === "string" ? data.case_id : undefined;
     const eventId = typeof data.event_id === "string" ? data.event_id : caseId;
 
-    const isEscalated = isBlocked || (riskScore !== undefined && riskScore >= 70);
+    const isEscalated = isBlocked || (riskScore !== undefined && riskScore >= 70) || harmSignalsDetected === true;
 
     let riskLabel: "ROUTINE" | "ESCALATE" | "BLOCK" | undefined;
-    if (riskScore !== undefined) {
-      if (riskScore >= 85 || isBlocked) riskLabel = "BLOCK";
-      else if (riskScore >= 70) riskLabel = "ESCALATE";
+    if (riskScore !== undefined || harmSignalsDetected === true) {
+      if (riskScore !== undefined && (riskScore >= 85 || isBlocked)) riskLabel = "BLOCK";
+      else if ((riskScore !== undefined && riskScore >= 70) || harmSignalsDetected === true) riskLabel = "ESCALATE";
       else riskLabel = "ROUTINE";
     }
 

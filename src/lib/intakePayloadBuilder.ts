@@ -110,6 +110,7 @@ function mapProgramsToBenefitType(programs: string[]): string {
 // ──────────────────────────────────────────────────────────────────────────────
 
 function mapIdvStatus(profile: ClaimantProfile): string {
+  if (profile.idvStatus) return profile.idvStatus;
   const appStatus = (profile.currentApplicationStatus ?? "").toLowerCase();
   if (appStatus === "verified" || appStatus === "active") return "verified";
   if (appStatus === "pending") return "pending";
@@ -118,6 +119,7 @@ function mapIdvStatus(profile: ClaimantProfile): string {
 }
 
 function mapResidencyStatus(profile: ClaimantProfile): string {
+  if (profile.residencyStatus) return profile.residencyStatus;
   // Infer from application status — extend if more granular data is available
   const appStatus = (profile.currentApplicationStatus ?? "").toLowerCase();
   if (appStatus === "active" || appStatus === "verified") return "verified";
@@ -126,7 +128,14 @@ function mapResidencyStatus(profile: ClaimantProfile): string {
 }
 
 
-function mapDocsStatus(_profile: ClaimantProfile): { docs_requested: string[]; docs_received: string[]; docs_quality: string } {
+function mapDocsStatus(profile: ClaimantProfile): { docs_requested: string[]; docs_received: string[]; docs_quality: string } {
+  if (profile.docsStatus) {
+    return {
+      docs_requested: profile.docsStatus.requested,
+      docs_received: profile.docsStatus.received,
+      docs_quality: profile.docsStatus.quality,
+    };
+  }
   return { docs_requested: [], docs_received: [], docs_quality: "valid" };
 }
 
@@ -157,11 +166,25 @@ const TRANSCRIPT_MESSAGES = 100;
 
 export function buildTranscriptExcerpt(
   history: Array<{ role: string; content: string }>,
+  profile?: ClaimantProfile,
 ): string {
-  // Use the last TRANSCRIPT_MESSAGES entries to include enough context
+  let header = "";
+  if (profile) {
+    const harm = profile.harmSignals && profile.harmSignals.level !== "none"
+      ? `[GOVERNANCE] Harm Signals: ${profile.harmSignals.level} (${profile.harmSignals.types.join(", ")}) - ${profile.harmSignals.notes}`
+      : "";
+    const note = profile.caseworkerNote
+      ? `\n[GOVERNANCE] Caseworker Note: ${profile.caseworkerNote}`
+      : "";
+    if (harm || note) {
+      header = `${harm}${note}\n---\n`;
+    }
+  }
+
+  // Use the last TRANSCRIPT_MESSAGES entries
   const recent = history.slice(-TRANSCRIPT_MESSAGES);
-  if (recent.length === 0) return "";
-  return recent.map((m) => `[${m.role}]: ${m.content}`).join("\n");
+  if (recent.length === 0) return header;
+  return header + recent.map((m) => `[${m.role}]: ${m.content}`).join("\n");
 }
 
 
@@ -184,6 +207,8 @@ export interface BuildIntakePayloadOptions {
   jurisdiction?: string;
   /** Pre-stored intake payload from claimant_case table — merged as base, with live data overlaid */
   storedPayload?: Record<string, unknown> | null;
+  /** Explicit decision type override from current turn */
+  decisionType?: IntakePayload["decision_context"]["decision_type"];
 }
 
 /**
@@ -213,7 +238,7 @@ export function buildIntakePayload(options: BuildIntakePayloadOptions): IntakePa
 
     decision_context: {
       ...(storedPayload?.decision_context as Record<string, unknown> || {}),
-      decision_type: mapToolToDecisionType(toolName),
+      decision_type: options.decisionType ?? (storedPayload?.decision_context as any)?.decision_type ?? mapToolToDecisionType(toolName),
       channel: "assisted" as const,
     },
 
@@ -239,12 +264,25 @@ export function buildIntakePayload(options: BuildIntakePayloadOptions): IntakePa
     free_text: {
       ...(storedPayload?.free_text as Record<string, unknown> || {}),
       claimant_message: userMessage,
-      agent_chat_transcript_excerpt: buildTranscriptExcerpt(history),
+      agent_chat_transcript_excerpt: buildTranscriptExcerpt(history, profile),
     },
 
-    // Ensure harm signals are explicitly preserved at the top level
-    ...(storedPayload?.harm_rights_signals ? { harm_rights_signals: storedPayload.harm_rights_signals } : {}),
+    // Prioritize harmful signals and caseworker notes from the live profile/system context
+    harm_rights_signals: profile.harmSignals && profile.harmSignals.level !== "none"
+      ? {
+        signal_level: profile.harmSignals.level,
+        signal_type: profile.harmSignals.types,
+        signal_source: "system",
+        notes: profile.harmSignals.notes,
+      }
+      : storedPayload?.harm_rights_signals && (storedPayload.harm_rights_signals as any).signal_level !== "none"
+        ? (storedPayload.harm_rights_signals as any)
+        : undefined,
   };
+
+  if (profile.caseworkerNote) {
+    (raw.free_text as any).caseworker_note = profile.caseworkerNote;
+  }
 
   // Validate — throws ZodError on schema violation
   return IntakePayloadSchema.parse(raw);
