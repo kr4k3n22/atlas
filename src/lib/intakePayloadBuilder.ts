@@ -170,13 +170,15 @@ export function buildTranscriptExcerpt(
 ): string {
   let header = "";
   if (profile) {
-    const harm = profile.harmSignals
+    const harm = profile.harmSignals && profile.harmSignals.level !== "none"
       ? `[GOVERNANCE] Harm Signals: ${profile.harmSignals.level} (${profile.harmSignals.types.join(", ")}) - ${profile.harmSignals.notes}`
-      : "[GOVERNANCE] No active harm signals detected.";
+      : "";
     const note = profile.caseworkerNote
       ? `\n[GOVERNANCE] Caseworker Note: ${profile.caseworkerNote}`
       : "";
-    header = `${harm}${note}\n---\n`;
+    if (harm || note) {
+      header = `${harm}${note}\n---\n`;
+    }
   }
 
   // Use the last TRANSCRIPT_MESSAGES entries
@@ -266,14 +268,14 @@ export function buildIntakePayload(options: BuildIntakePayloadOptions): IntakePa
     },
 
     // Prioritize harmful signals and caseworker notes from the live profile/system context
-    harm_rights_signals: profile.harmSignals
+    harm_rights_signals: profile.harmSignals && profile.harmSignals.level !== "none"
       ? {
         signal_level: profile.harmSignals.level,
         signal_type: profile.harmSignals.types,
         signal_source: "system",
         notes: profile.harmSignals.notes,
       }
-      : storedPayload?.harm_rights_signals
+      : storedPayload?.harm_rights_signals && (storedPayload.harm_rights_signals as any).signal_level !== "none"
         ? (storedPayload.harm_rights_signals as any)
         : undefined,
   };
