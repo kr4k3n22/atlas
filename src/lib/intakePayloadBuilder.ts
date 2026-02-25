@@ -197,7 +197,7 @@ function mapFraudSignals(profile: ClaimantProfile): { identity_duplicate_match: 
 // Transcript excerpt helper
 // ──────────────────────────────────────────────────────────────────────────────
 
-const TRANSCRIPT_MESSAGES = 30;
+const TRANSCRIPT_MESSAGES = 100;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Harm signal keyword detector
@@ -329,7 +329,7 @@ export function buildIntakePayload(options: BuildIntakePayloadOptions): IntakePa
     storedPayload,
   } = options;
 
-  // Build the base caseworker note from harm signals, then prepend a context-
+  // 1. Build the base caseworker note from harm signals, then prepend a context-
   // bypass warning if the tool intent was resolved from history rather than the
   // current literal message. This is critical: the gateway MUST know that the
   // actual request is in userMessage (from history), not the trivial turn text.
@@ -347,44 +347,49 @@ export function buildIntakePayload(options: BuildIntakePayloadOptions): IntakePa
     caseworkerNote = harmNote;
   }
 
-  const storedStructuredInputs = (storedPayload?.structured_inputs ?? {}) as Record<string, unknown>;
-  const storedDecisionContext = (storedPayload?.decision_context ?? {}) as Record<string, unknown>;
-  const storedHarmSignals = storedPayload?.harm_rights_signals ?? undefined;
-
   const raw = {
+    // Start with the full historical payload from the database to preserve all custom fields
+    ...(storedPayload || {}),
+
     case_id: caseId ?? (storedPayload?.case_id as string) ?? `REF-${nanoid(10)}`,
     timestamp_utc: new Date().toISOString(),
     jurisdiction: (storedPayload?.jurisdiction as string) ?? jurisdiction,
     benefit_type: (storedPayload?.benefit_type as string) ?? mapProgramsToBenefitType(profile.programs),
+
     decision_context: {
-      ...storedDecisionContext,
+      ...(storedPayload?.decision_context as Record<string, unknown> || {}),
       decision_type: mapToolToDecisionType(toolName),
       channel: "assisted" as const,
     },
+
     structured_inputs: {
-      ...storedStructuredInputs,
-      // Always overlay live-derived status fields
+      ...(storedPayload?.structured_inputs as Record<string, unknown> || {}),
+      // Overlay live-derived profile status fields
       idv_status: mapIdvStatus(profile),
       residency_status: mapResidencyStatus(profile),
       docs_status: {
-        ...(storedStructuredInputs.docs_status ?? {}),
+        ...((storedPayload?.structured_inputs as any)?.docs_status || {}),
         ...mapDocsStatus(profile),
       },
       engagement_barriers: {
-        ...(storedStructuredInputs.engagement_barriers ?? {}),
+        ...((storedPayload?.structured_inputs as any)?.engagement_barriers || {}),
         ...mapEngagementBarriers(profile),
       },
       fraud_signals: {
-        ...(storedStructuredInputs.fraud_signals ?? {}),
+        ...((storedPayload?.structured_inputs as any)?.fraud_signals || {}),
         ...mapFraudSignals(profile),
       },
     },
+
     free_text: {
+      ...(storedPayload?.free_text as Record<string, unknown> || {}),
       claimant_message: userMessage,
       agent_chat_transcript_excerpt: buildTranscriptExcerpt(history),
       ...(caseworkerNote ? { caseworker_note: caseworkerNote } : {}),
     },
-    ...(storedHarmSignals ? { harm_rights_signals: storedHarmSignals } : {}),
+
+    // Ensure harm signals are explicitly preserved at the top level
+    ...(storedPayload?.harm_rights_signals ? { harm_rights_signals: storedPayload.harm_rights_signals } : {}),
   };
 
   // Validate — throws ZodError on schema violation
