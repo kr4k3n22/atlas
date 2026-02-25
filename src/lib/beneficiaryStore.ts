@@ -17,21 +17,6 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 // Types
 // ──────────────────────────────────────────────────────────────────────────────
 
-export interface HousingPayment {
-  paymentTypeCode: string;
-  amountMinor: number;
-  currencyCode: string;
-  frequencyCode: string;
-}
-
-export interface EmployerRecord {
-  id: string;
-  employerName: string;
-  statusCode: string;
-  startDate: string | null;
-  endDate: string | null;
-}
-
 export interface ClaimantProfile {
   claimantId: string;
   externalRef: string;
@@ -43,9 +28,9 @@ export interface ClaimantProfile {
   currentApplicationRef: string | null;
   programs: string[];
   incomeSummary: ClaimantIncomeSummary | null;
-  pendingDecisions: PendingDecision[];
-  housingPayments: HousingPayment[];
-  employerRecords: EmployerRecord[];
+  pendingDecisions: unknown[];
+  housingPayments: unknown[];
+  employerRecords: unknown[];
 }
 
 export interface ClaimantIncomeSummary {
@@ -78,14 +63,6 @@ export interface HouseholdMember {
   fullName: string;
   relationshipToPrimary: string;
   isPrimary: boolean;
-}
-
-export interface PendingDecision {
-  decisionId: string;
-  decisionResultCode: string;
-  decidedAt: string;
-  reasonCodes: string[];
-  reasonDetails: (string | null)[];
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -280,37 +257,17 @@ export function buildProfileContext(profile: ClaimantProfile): string {
   }
 
   if (profile.employerRecords.length > 0) {
-    lines.push("Employer records:");
-    for (const emp of profile.employerRecords) {
-      const period = emp.startDate
-        ? `${emp.startDate} – ${emp.endDate ?? "present"}`
-        : "dates not recorded";
-      lines.push(`  - ${emp.employerName} (${emp.statusCode}): ${period}`);
-    }
+    lines.push("Employer records: on file");
   }
 
   if (profile.housingPayments.length > 0) {
-    lines.push("Housing payments:");
-    for (const hp of profile.housingPayments) {
-      const amount = formatMinorAmount(hp.amountMinor, hp.currencyCode);
-      lines.push(`  - ${hp.paymentTypeCode}: ${amount} (${hp.frequencyCode})`);
-    }
+    lines.push("Housing payments: on file");
   } else {
     lines.push("Housing payments: not yet recorded");
   }
 
   if (profile.pendingDecisions.length > 0) {
-    lines.push("Decisions:");
-    for (const dec of profile.pendingDecisions) {
-      lines.push(`  - ${dec.decisionResultCode} on ${dec.decidedAt.slice(0, 10)}`);
-      if (dec.reasonCodes.length > 0) {
-        lines.push(`    Reason codes: ${dec.reasonCodes.join(", ")}`);
-      }
-      const details = dec.reasonDetails.filter(Boolean);
-      if (details.length > 0) {
-        lines.push(`    Details: ${details.join("; ")}`);
-      }
-    }
+    lines.push(`Decisions: ${profile.pendingDecisions.length} recorded`);
   }
 
   return lines.join("\n");
