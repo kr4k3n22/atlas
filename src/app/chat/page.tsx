@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import DecisionTrace, { type DecisionTraceData } from "@/components/DecisionTrace";
 import ChatMarkdown from "@/components/ChatMarkdown";
 import { APPROVER_SLUGS, APPROVERS } from "@/lib/approvers";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -740,73 +741,73 @@ export default function ChatPage() {
                   {group}
                 </p>
                 {groups[group].map((conv) => {
-                    const category = getDisplayCategory(caseStatuses[conv.id]);
-                    const style = category ? CATEGORY_STYLE[category] : null;
-                    return (
-                  <div
-                    key={conv.id}
-                    className={`group flex items-center gap-1 px-3 py-2 cursor-pointer rounded-md mx-1 text-sm transition-colors ${activeConvId === conv.id
-                      ? "bg-primary/15 text-foreground"
-                      : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
-                      } ${style ? style.border : ""}`}
-                    onClick={() => selectConversation(conv.id)}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="truncate text-xs font-semibold text-foreground/90">
-                        {getRequestId(requestIdMap.get(conv.id) ?? 0)}
-                      </div>
-                      <div className="truncate text-[11px] text-muted-foreground leading-tight">
-                        {conv.title}
-                      </div>
-                      <div className="text-[10px] text-muted-foreground/60 mt-0.5">
-                        {formatDateTime(conv.updated_at)}
-                      </div>
-                      {style && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium ${style.badgeBg} ${style.badgeText}`}
-                            title={style.tooltip}
-                          >
-                            <span>{style.icon}</span>
-                            <span className="max-w-[140px] truncate">{style.label}</span>
-                          </span>
+                  const category = getDisplayCategory(caseStatuses[conv.id]);
+                  const style = category ? CATEGORY_STYLE[category] : null;
+                  return (
+                    <div
+                      key={conv.id}
+                      className={`group flex items-center gap-1 px-3 py-2 cursor-pointer rounded-md mx-1 text-sm transition-colors ${activeConvId === conv.id
+                        ? "bg-primary/15 text-foreground"
+                        : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+                        } ${style ? style.border : ""}`}
+                      onClick={() => selectConversation(conv.id)}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="truncate text-xs font-semibold text-foreground/90">
+                          {getRequestId(requestIdMap.get(conv.id) ?? 0)}
                         </div>
+                        <div className="truncate text-[11px] text-muted-foreground leading-tight">
+                          {conv.title}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground/60 mt-0.5">
+                          {formatDateTime(conv.updated_at)}
+                        </div>
+                        {style && (
+                          <div className="flex items-center gap-1 mt-1">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium ${style.badgeBg} ${style.badgeText}`}
+                              title={style.tooltip}
+                            >
+                              <span>{style.icon}</span>
+                              <span className="max-w-[140px] truncate">{style.label}</span>
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      {deleteConfirm === conv.id ? (
+                        <div className="flex gap-1 shrink-0">
+                          <button
+                            className="text-destructive text-xs hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void deleteConversation(conv.id);
+                            }}
+                          >
+                            Delete
+                          </button>
+                          <button
+                            className="text-muted-foreground text-xs hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteConfirm(null);
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          className="opacity-0 group-hover:opacity-100 shrink-0 text-muted-foreground hover:text-destructive transition-opacity"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteConfirm(conv.id);
+                          }}
+                          aria-label="Delete conversation"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       )}
                     </div>
-                    {deleteConfirm === conv.id ? (
-                      <div className="flex gap-1 shrink-0">
-                        <button
-                          className="text-destructive text-xs hover:underline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void deleteConversation(conv.id);
-                          }}
-                        >
-                          Delete
-                        </button>
-                        <button
-                          className="text-muted-foreground text-xs hover:underline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteConfirm(null);
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        className="opacity-0 group-hover:opacity-100 shrink-0 text-muted-foreground hover:text-destructive transition-opacity"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeleteConfirm(conv.id);
-                        }}
-                        aria-label="Delete conversation"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
                   );
                 })}
               </div>
@@ -884,6 +885,9 @@ export default function ChatPage() {
             <Shield className="w-4 h-4 text-primary" />
             <span className="font-semibold text-sm">Welfare Services Portal</span>
           </div>
+          <div className="ml-auto">
+            <ThemeToggle />
+          </div>
         </header>
 
         {/* Desktop header */}
@@ -894,6 +898,9 @@ export default function ChatPage() {
             <p className="text-xs text-muted-foreground leading-tight">
               Powered by ATLAS Governance Framework
             </p>
+          </div>
+          <div className="ml-auto">
+            <ThemeToggle />
           </div>
         </header>
 
