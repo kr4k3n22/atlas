@@ -11,6 +11,7 @@
 import { z } from "zod";
 import { nanoid } from "nanoid";
 import type { ClaimantProfile } from "@/lib/beneficiaryStore";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Zod schema — the authoritative shape for /api/intake
@@ -23,31 +24,49 @@ export const IntakePayloadSchema = z.object({
   benefit_type: z.string().min(1),
   decision_context: z.object({
     decision_type: z.enum(["approve", "deny", "continue_review"]),
-    channel: z.literal("assisted"),
-  }),
+    channel: z.string().default("assisted"),
+    payment_due_within_days: z.number().nullable().optional(),
+    case_age_days: z.number().nullable().optional(),
+  }).passthrough(),
   structured_inputs: z.object({
     idv_status: z.string(),
     residency_status: z.string(),
+    employment_status_declared: z.string().optional(),
+    separation_reason_declared: z.string().optional(),
+    employer_report_status: z.string().optional(),
+    contributions_record_status: z.string().optional(),
+    earnings_record_last_30d: z.string().optional(),
+    income_verification: z.string().optional(),
+    other_benefits_overlap_check: z.string().optional(),
+    bank_data_access: z.string().optional(),
     docs_status: z.object({
       docs_requested: z.array(z.string()).default([]),
       docs_received: z.array(z.string()).default([]),
       docs_quality: z.string().default("valid"),
-    }),
+    }).passthrough(),
     engagement_barriers: z.object({
       language_barrier: z.string().default("none"),
+      digital_access: z.string().optional(),
       disability_accommodation_needed: z.string().default("no"),
-    }),
+    }).passthrough(),
     fraud_signals: z.object({
       identity_duplicate_match: z.string().default("none"),
+      device_or_address_reuse: z.string().optional(),
       document_tampering: z.string().default("none"),
-    }),
-  }),
+    }).passthrough(),
+  }).passthrough(),
   free_text: z.object({
     claimant_message: z.string(),
     agent_chat_transcript_excerpt: z.string(),
-    // caseworker_note: z.string().optional(), // TEMP DISABLED — diagnosing 422 (Pydantic extra='forbid'?)
-  }),
-});
+    caseworker_note: z.string().optional(),
+  }).passthrough(),
+  harm_rights_signals: z.object({
+    signal_level: z.string(),
+    signal_type: z.array(z.string()),
+    signal_source: z.string(),
+    notes: z.string(),
+  }).optional(),
+}).passthrough();
 
 export type IntakePayload = z.infer<typeof IntakePayloadSchema>;
 
@@ -289,6 +308,8 @@ export interface BuildIntakePayloadOptions {
    *  current turn was a trivial meta-phrase (this string). A caseworker_note
    *  will be added alerting the gateway to this context-bypass risk. */
   contextInferred?: string;
+  /** Pre-stored intake payload from claimant_case table — merged as base, with live data overlaid */
+  storedPayload?: Record<string, unknown> | null;
 }
 
 /**
@@ -305,6 +326,7 @@ export function buildIntakePayload(options: BuildIntakePayloadOptions): IntakePa
     caseId,
     jurisdiction = "GB",
     contextInferred,
+    storedPayload,
   } = options;
 
   // Build the base caseworker note from harm signals, then prepend a context-
@@ -325,31 +347,64 @@ export function buildIntakePayload(options: BuildIntakePayloadOptions): IntakePa
     caseworkerNote = harmNote;
   }
 
+  const storedStructuredInputs = (storedPayload?.structured_inputs ?? {}) as Record<string, unknown>;
+  const storedDecisionContext = (storedPayload?.decision_context ?? {}) as Record<string, unknown>;
+  const storedHarmSignals = storedPayload?.harm_rights_signals ?? undefined;
+
   const raw = {
-    case_id: caseId ?? `REF-${nanoid(10)}`,
+    case_id: caseId ?? (storedPayload?.case_id as string) ?? `REF-${nanoid(10)}`,
     timestamp_utc: new Date().toISOString(),
-    jurisdiction,
-    benefit_type: mapProgramsToBenefitType(profile.programs),
+    jurisdiction: (storedPayload?.jurisdiction as string) ?? jurisdiction,
+    benefit_type: (storedPayload?.benefit_type as string) ?? mapProgramsToBenefitType(profile.programs),
     decision_context: {
+      ...storedDecisionContext,
       decision_type: mapToolToDecisionType(toolName),
       channel: "assisted" as const,
     },
     structured_inputs: {
+      ...storedStructuredInputs,
+      // Always overlay live-derived status fields
       idv_status: mapIdvStatus(profile),
       residency_status: mapResidencyStatus(profile),
-      docs_status: mapDocsStatus(profile),
-      engagement_barriers: mapEngagementBarriers(profile),
-      fraud_signals: mapFraudSignals(profile),
+      docs_status: {
+        ...(storedStructuredInputs.docs_status ?? {}),
+        ...mapDocsStatus(profile),
+      },
+      engagement_barriers: {
+        ...(storedStructuredInputs.engagement_barriers ?? {}),
+        ...mapEngagementBarriers(profile),
+      },
+      fraud_signals: {
+        ...(storedStructuredInputs.fraud_signals ?? {}),
+        ...mapFraudSignals(profile),
+      },
     },
     free_text: {
       claimant_message: userMessage,
       agent_chat_transcript_excerpt: buildTranscriptExcerpt(history),
-      // caseworker_note: caseworkerNote, // TEMP DISABLED — diagnosing 422 (Pydantic extra='forbid'?)
+      ...(caseworkerNote ? { caseworker_note: caseworkerNote } : {}),
     },
+    ...(storedHarmSignals ? { harm_rights_signals: storedHarmSignals } : {}),
   };
 
   // Validate — throws ZodError on schema violation
   return IntakePayloadSchema.parse(raw);
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Stored payload fetch helper
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetches the stored intake_payload JSONB from app.claimant_case via
+ * the get_claimant_intake_payload RPC. Returns null on any error.
+ */
+export async function getStoredIntakePayload(beneficiaryId: string): Promise<Record<string, unknown> | null> {
+  const { data, error } = await supabaseAdmin.rpc("get_claimant_intake_payload", {
+    p_beneficiary_id: beneficiaryId,
+  });
+  if (error || !data) return null;
+  return data as Record<string, unknown>;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
