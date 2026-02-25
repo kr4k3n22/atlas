@@ -205,6 +205,8 @@ export interface BuildIntakePayloadOptions {
   jurisdiction?: string;
   /** Pre-stored intake payload from claimant_case table — merged as base, with live data overlaid */
   storedPayload?: Record<string, unknown> | null;
+  /** Explicit decision type override from current turn */
+  decisionType?: IntakePayload["decision_context"]["decision_type"];
 }
 
 /**
@@ -234,7 +236,7 @@ export function buildIntakePayload(options: BuildIntakePayloadOptions): IntakePa
 
     decision_context: {
       ...(storedPayload?.decision_context as Record<string, unknown> || {}),
-      decision_type: mapToolToDecisionType(toolName),
+      decision_type: options.decisionType ?? (storedPayload?.decision_context as any)?.decision_type ?? mapToolToDecisionType(toolName),
       channel: "assisted" as const,
     },
 

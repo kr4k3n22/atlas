@@ -299,7 +299,7 @@ const ATLAS_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
 ];
 
 export type ChatWithToolsResult =
-  | { type: "tool_call"; name: string; arguments: Record<string, unknown> }
+  | { type: "tool_call"; name: string; arguments: Record<string, unknown>; content?: string }
   | { type: "message"; content: string };
 
 /**
@@ -356,7 +356,12 @@ export async function chatWithTools(
       } catch {
         args = {};
       }
-      return { type: "tool_call", name: toolCall.function.name, arguments: args };
+      return {
+        type: "tool_call",
+        name: toolCall.function.name,
+        arguments: args,
+        content: choice.message.content ?? undefined,
+      };
     }
   }
 

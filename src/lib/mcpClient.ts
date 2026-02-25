@@ -170,7 +170,7 @@ export async function callMcpTool(
  * Extract the first embedded JSON object from a text string.
  * Returns the clean text (with the JSON block removed) and the parsed JSON data.
  */
-function extractInlineJson(text: string): { cleanText: string; jsonData: Record<string, unknown> | null } {
+export function extractInlineJson(text: string): { cleanText: string; jsonData: Record<string, unknown> | null } {
   const match = text.match(/\{(?:[^{}]|\{[^{}]*\})*\}/);
   if (!match) return { cleanText: text.trim(), jsonData: null };
   try {

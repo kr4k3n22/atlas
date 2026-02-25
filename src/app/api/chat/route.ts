@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getAuthUser } from "@/lib/getAuthUser";
-import { callMcpTool, callIntake } from "@/lib/mcpClient";
+import { callMcpTool, callIntake, extractInlineJson } from "@/lib/mcpClient";
 import { createCase } from "@/lib/caseStore";
 import { chatCompletion, chatWithTools } from "@/lib/openaiClient";
 import { getClaimantProfile, buildProfileContext } from "@/lib/beneficiaryStore";
@@ -181,6 +181,7 @@ export async function POST(req: NextRequest) {
   // Otherwise fall back to regex pattern matching.
   let toolCall: ToolCall | null = null;
   let openaiDirectReply: string | null = null;
+  let assistantContentOverride: string | undefined = undefined;
 
   if (hasOpenAI) {
     try {
@@ -197,6 +198,7 @@ export async function POST(req: NextRequest) {
 
       if (aiResult.type === "tool_call") {
         toolCall = { name: aiResult.name, arguments: aiResult.arguments };
+        assistantContentOverride = aiResult.content;
       } else {
         // Strip any JSON the AI appended via its output protocol before storing
         openaiDirectReply = stripInlineJson(aiResult.content);
@@ -235,6 +237,15 @@ export async function POST(req: NextRequest) {
       if (claimantProfile) {
         const storedPayload = await getStoredIntakePayload(beneficiaryId).catch(() => null);
 
+        // Extract decision_type from assistantContentOverride if available
+        let decisionTypeOverride: any = undefined;
+        if (assistantContentOverride) {
+          const { jsonData } = extractInlineJson(assistantContentOverride);
+          if (jsonData?.decision_type) {
+            decisionTypeOverride = jsonData.decision_type;
+          }
+        }
+
         const intakePayload = buildIntakePayload({
           profile: claimantProfile,
           userMessage: message,
@@ -242,6 +253,7 @@ export async function POST(req: NextRequest) {
           toolName: toolCall.name,
           caseId: conversationId ?? undefined,
           storedPayload,
+          decisionType: decisionTypeOverride,
         });
 
         const validation = validateIntakePayload(intakePayload);
