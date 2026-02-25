@@ -307,7 +307,7 @@ const ATLAS_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "check_payment_status",
       description:
-        "Check the current status of a welfare payment or claim for a beneficiary. Use when Alex asks about their claim, payment, or case progress.",
+        "Check the current status of a welfare payment or claim for a beneficiary. Use when the user asks about their claim, payment, or case progress.",
       parameters: {
         type: "object",
         properties: {
@@ -325,7 +325,7 @@ const ATLAS_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "request_payment_extension",
       description:
-        "Request an extension or continuation of welfare payments or benefits. Use when Alex wants to extend, apply for, or continue receiving benefits.",
+        "Request an extension or continuation of welfare payments or benefits. Use when the user wants to extend, apply for, or continue receiving benefits.",
       parameters: {
         type: "object",
         properties: {
@@ -335,7 +335,7 @@ const ATLAS_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
           },
           reason: {
             type: "string",
-            description: "The reason for requesting the payment extension, in Alex's own words.",
+            description: "The reason for requesting the payment extension, in the user's own words.",
           },
         },
         required: ["beneficiary_id", "reason"],
@@ -347,7 +347,7 @@ const ATLAS_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
     function: {
       name: "modify_welfare_record",
       description:
-        "Modify or update a welfare record for a beneficiary, such as changing personal details, updating payment information, or amending case data. Use when Alex wants to change, update, or edit their record.",
+        "Modify or update a welfare record for a beneficiary, such as changing personal details, updating payment information, or amending case data. Use when the user wants to change, update, or edit their record.",
       parameters: {
         type: "object",
         properties: {

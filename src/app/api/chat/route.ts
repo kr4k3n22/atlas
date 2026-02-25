@@ -308,7 +308,7 @@ export async function POST(req: NextRequest) {
           try {
             result.reply = await chatCompletion(
               effectiveHistory,
-              `The user requested: "${message}". The ATLAS Governor has BLOCKED this request. Reason: "${result.risk_rationale ?? result.reply}". Explain this empathetically to Alex, cite the Human Oversight requirement, and let them know their request is under review by a case officer.`,
+              `The user requested: "${message}". The ATLAS Governor has BLOCKED this request. Reason: "${result.risk_rationale ?? result.reply}". Explain this empathetically to the claimant, cite the Human Oversight requirement, and let them know their request is under review by a case officer.`,
               claimantContextBlock ?? undefined,
             );
           } catch {
@@ -320,7 +320,7 @@ export async function POST(req: NextRequest) {
         try {
           result.reply = await chatCompletion(
             effectiveHistory,
-            `The user requested: "${message}". The ATLAS system returned the following result: "${result.reply}". Provide a friendly, concise confirmation to Alex based on this outcome.`,
+            `The user requested: "${message}". The ATLAS system returned the following result: "${result.reply}". Provide a friendly, concise confirmation to the claimant based on this outcome.`,
             claimantContextBlock ?? undefined,
           );
         } catch {
