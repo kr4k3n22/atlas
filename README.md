@@ -491,3 +491,5 @@ When the Gateway is not configured, the chat API uses regex-based pattern matchi
 ## License
 
 This project is currently unlicensed. Contact the maintainers for usage terms.
+
+aidan
