@@ -231,14 +231,6 @@ const QUICK_PROMPTS = [
   "I need to update my personal details",
 ];
 
-const DEMO_CLAIMANTS: Array<{ id: string; name: string }> = [
-  { id: "BEN-ATLAS-001", name: "Ella Gible" },
-  { id: "BEN-ATLAS-002", name: "Alex Haitel" },
-  { id: "BEN-ATLAS-003", name: "Noah Chance" },
-  { id: "BEN-ATLAS-004", name: "Reid Peet Van der Loop" },
-  { id: "BEN-ATLAS-005", name: "Ella Gible (Copy)" },
-];
-
 // Patterns indicating a case decision (approval/rejection/info request) from a reviewer
 const DECISION_PATTERNS = ["approved", "not approved", "additional information"];
 
@@ -344,7 +336,6 @@ export default function ChatPage() {
 
   const [displayName, setDisplayName] = React.useState("");
   const [beneficiaryId, setBeneficiaryId] = React.useState<string>("");
-  const [profileSaving, setProfileSaving] = React.useState(false);
   const [conversations, setConversations] = React.useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = React.useState<string | null>(null);
   const [messages, setMessages] = React.useState<Message[]>([]);
@@ -683,31 +674,6 @@ export default function ChatPage() {
     window.location.href = "/login";
   }
 
-  async function switchProfile(newBeneficiaryId: string) {
-    if (newBeneficiaryId === beneficiaryId || profileSaving) return;
-    setProfileSaving(true);
-    try {
-      const res = await fetch("/api/auth/update-profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ beneficiary_id: newBeneficiaryId }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        toast.error(data.error ?? "Failed to update profile");
-        return;
-      }
-      // Refresh the session so user_metadata reflects the new beneficiary_id
-      await supabase.auth.refreshSession();
-      setBeneficiaryId(newBeneficiaryId);
-      toast.success("Claimant profile updated");
-    } catch {
-      toast.error("Failed to update profile");
-    } finally {
-      setProfileSaving(false);
-    }
-  }
-
   // Build a Request ID map: sort all conversations by created_at ascending, assign sequential IDs
   const requestIdMap = React.useMemo(() => {
     const sorted = [...conversations].sort((a, b) => a.created_at.localeCompare(b.created_at));
@@ -871,28 +837,6 @@ export default function ChatPage() {
 
       {/* User info */}
       <div className="p-3 border-t border-border space-y-2">
-        {/* Claimant profile selector */}
-        <div className="space-y-1">
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-            Claimant profile
-          </p>
-          <select
-            value={beneficiaryId}
-            onChange={(e) => void switchProfile(e.target.value)}
-            disabled={profileSaving}
-            className="w-full rounded-md border border-border bg-muted/50 px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-            aria-label="Switch claimant profile"
-          >
-            {!beneficiaryId && (
-              <option value="" disabled>No profile linked</option>
-            )}
-            {DEMO_CLAIMANTS.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.id} — {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
         {/* User display + sign out */}
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center shrink-0">
