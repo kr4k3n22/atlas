@@ -36,6 +36,12 @@ export interface ClaimantProfile {
     received: string[];
     quality: string;
   };
+  harmSignals?: {
+    level: string;
+    types: string[];
+    notes: string;
+  };
+  caseworkerNote?: string;
 }
 
 
@@ -97,6 +103,12 @@ export async function getClaimantProfile(
       received: (structuredInputs.docs_status as any).docs_received || [],
       quality: (structuredInputs.docs_status as any).docs_quality || "unknown",
     } : undefined,
+    harmSignals: payload?.harm_rights_signals ? {
+      level: (payload.harm_rights_signals as any).signal_level || "none",
+      types: (payload.harm_rights_signals as any).signal_type || [],
+      notes: (payload.harm_rights_signals as any).notes || "",
+    } : undefined,
+    caseworkerNote: (payload?.free_text as any)?.caseworker_note || undefined,
   };
 }
 
@@ -178,6 +190,20 @@ export function buildProfileContext(profile: ClaimantProfile): string {
     if (requested.length > 0) lines.push(`Documents requested: ${requested.join(", ")}`);
     if (received.length > 0) lines.push(`Documents received: ${received.join(", ")}`);
     lines.push(`Document quality: ${quality}`);
+  }
+
+  if (profile.harmSignals && profile.harmSignals.level !== "none") {
+    lines.push(`Harm/Rights Signal Level: ${profile.harmSignals.level}`);
+    if (profile.harmSignals.types.length > 0) {
+      lines.push(`Harm/Rights Signals: ${profile.harmSignals.types.join(", ")}`);
+    }
+    if (profile.harmSignals.notes) {
+      lines.push(`Harm/Rights Notes: ${profile.harmSignals.notes}`);
+    }
+  }
+
+  if (profile.caseworkerNote) {
+    lines.push(`Caseworker Note: ${profile.caseworkerNote}`);
   }
 
   return lines.join("\n");
