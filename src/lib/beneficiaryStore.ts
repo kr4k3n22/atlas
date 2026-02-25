@@ -4,6 +4,10 @@
  * Queries the PostgreSQL welfare-claims schema to retrieve claimant profile
  * data for grounding the AI chat agent's responses.
  *
+ * Primary data source: app.claimant_case (via get_claimant_profile_summary and
+ * get_claimant_intake_payload RPCs). Falls back to legacy RPCs when no
+ * claimant_case row exists for the beneficiary ID.
+ *
  * All monetary amounts are stored in minor currency units (pence for GBP).
  * Consumer code should convert to display units when presenting to users.
  */
@@ -114,14 +118,52 @@ type HouseholdMemberRow = {
 // ──────────────────────────────────────────────────────────────────────────────
 
 /**
- * Builds a comprehensive claimant profile by joining claimant, household,
- * employment, income, and application data from the welfare-claims schema.
+ * Builds a comprehensive claimant profile. Reads primarily from app.claimant_case
+ * (via get_claimant_profile_summary + get_claimant_intake_payload RPCs).
+ * Falls back to the legacy welfare-claims schema RPCs when no claimant_case
+ * row exists for the given beneficiary ID.
  *
  * @param beneficiaryId  The external reference (e.g. "BEN-ATLAS-001")
  */
 export async function getClaimantProfile(
   beneficiaryId: string,
 ): Promise<ClaimantProfile | null> {
+  // ── Primary path: app.claimant_case ──────────────────────────────────────
+  const [summaryResult, payloadResult] = await Promise.all([
+    supabaseAdmin.rpc("get_claimant_profile_summary", { p_beneficiary_id: beneficiaryId }),
+    supabaseAdmin.rpc("get_claimant_intake_payload", { p_beneficiary_id: beneficiaryId }),
+  ]);
+
+  const summary = summaryResult.data?.[0] ?? null;
+  if (summary) {
+    const payload = (payloadResult.data ?? null) as Record<string, unknown> | null;
+    const structuredInputs = (payload?.structured_inputs ?? {}) as Record<string, unknown>;
+
+    const employmentStatus =
+      (structuredInputs.employment_status_declared as string | undefined) ?? null;
+    const dateOfBirth =
+      (structuredInputs.dob as string | undefined) ??
+      (structuredInputs.date_of_birth as string | undefined) ??
+      null;
+
+    return {
+      claimantId: summary.beneficiary_id as string,
+      externalRef: summary.beneficiary_id as string,
+      fullName: summary.claimant_name as string,
+      dateOfBirth,
+      employmentStatus,
+      householdSize: 1,
+      currentApplicationStatus: (summary.decision_type as string | null) ?? null,
+      currentApplicationRef: (summary.case_id as string | null) ?? null,
+      programs: summary.benefit_type ? [summary.benefit_type as string] : [],
+      incomeSummary: null,
+      pendingDecisions: [],
+      housingPayments: [],
+      employerRecords: [],
+    };
+  }
+
+  // ── Fallback path: legacy welfare-claims schema ───────────────────────────
   // 1. Fetch core claimant row via external_claimant_ref
   const { data: claimantRows, error: claimantError } = await supabaseAdmin
     .rpc("get_claimant_by_ref", { p_ref: beneficiaryId });

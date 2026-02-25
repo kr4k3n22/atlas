@@ -5,7 +5,7 @@ import { callMcpTool, callIntake } from "@/lib/mcpClient";
 import { createCase } from "@/lib/caseStore";
 import { chatCompletion, chatWithTools, enrichReasonContext } from "@/lib/openaiClient";
 import { getClaimantProfile, buildProfileContext } from "@/lib/beneficiaryStore";
-import { buildIntakePayload, validateIntakePayload, buildContextualClaimantMessage, detectHarmSignals, buildTranscriptExcerpt } from "@/lib/intakePayloadBuilder";
+import { buildIntakePayload, validateIntakePayload, buildContextualClaimantMessage, detectHarmSignals, buildTranscriptExcerpt, getStoredIntakePayload } from "@/lib/intakePayloadBuilder";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -222,6 +222,8 @@ export async function POST(req: NextRequest) {
           transcriptExcerpt: buildTranscriptExcerpt(effectiveHistory),
         });
 
+        const storedPayload = await getStoredIntakePayload(beneficiaryId).catch(() => null);
+
         const intakePayload = buildIntakePayload({
           profile: claimantProfile,
           userMessage: enrichedMessage,
@@ -229,6 +231,7 @@ export async function POST(req: NextRequest) {
           toolName: toolCall.name,
           caseId: conversationId ?? undefined,
           contextInferred: isContextInferred ? message : undefined,
+          storedPayload,
         });
 
         const validation = validateIntakePayload(intakePayload);
