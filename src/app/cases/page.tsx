@@ -929,28 +929,7 @@ export default function CasesPage() {
           </div>
         </div>
 
-        {/* 4-card metrics grid */}
-        <div className="mt-4 grid gap-3 md:grid-cols-4">
-          <div className="rounded-xl border border-muted/50 bg-background/40 p-4">
-            <div className="text-xs text-muted-foreground">Pending</div>
-            <div className="text-2xl font-semibold">{counts.pending}</div>
-          </div>
-          <div className="rounded-xl border border-orange-500/40 bg-orange-500/10 p-4">
-            <div className="text-xs text-muted-foreground">Article 14 Risk</div>
-            <div className="text-2xl font-semibold text-orange-400">{metrics.article14}</div>
-          </div>
-          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
-            <div className="text-xs text-muted-foreground">Escalate to Human</div>
-            <div className="text-2xl font-semibold text-amber-400">{metrics.escalateToHuman}</div>
-          </div>
-          <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4">
-            <div className="text-xs text-muted-foreground">SLA 24h breach</div>
-            <div className="text-2xl font-semibold text-rose-400">{metrics.waiting24h}</div>
-            <div className="text-xs text-muted-foreground mt-1">
-              Oldest pending: {metrics.oldestPending}h
-            </div>
-          </div>
-        </div>
+
 
         {err ? (
           <div className="mt-4 rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
