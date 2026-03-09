@@ -206,7 +206,7 @@ const CATEGORY_STYLE: Record<
   officer_info_requested: {
     border: "border-l-2 border-l-amber-500",
     badgeBg: "bg-amber-500/15",
-    badgeText: "text-amber-400",
+    badgeText: "text-amber-600 dark:text-amber-400",
     icon: "ℹ",
     label: "Info requested by Case Officer",
     tooltip: "Further information requested by Case Officer",
@@ -246,7 +246,7 @@ const CATEGORY_STYLE: Record<
   pending_review: {
     border: "border-l-2 border-l-amber-400 border-dashed",
     badgeBg: "bg-amber-500/10",
-    badgeText: "text-amber-300",
+    badgeText: "text-amber-700 dark:text-amber-300",
     icon: "⏳",
     label: "Pending Review",
     tooltip: "Pending review by a case officer",
@@ -294,26 +294,26 @@ function EscalationCard({
     escalation.risk_label === "BLOCK"
       ? "text-red-400"
       : escalation.risk_label === "ESCALATE"
-        ? "text-amber-400"
+        ? "text-amber-600 dark:text-amber-400"
         : "text-green-400";
   const riskBg =
     escalation.risk_label === "BLOCK"
       ? "bg-red-500/15 border-red-500/30 text-red-300"
       : escalation.risk_label === "ESCALATE"
-        ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
+        ? "bg-amber-500/15 border-amber-500/30 text-amber-700 dark:text-amber-300"
         : "bg-green-500/15 border-green-500/30 text-green-300";
 
   return (
     <div className="rounded-lg border border-amber-500/30 bg-gradient-to-b from-amber-500/10 to-transparent space-y-3 p-3 -mx-1">
       <div className="flex items-center gap-2">
         <span className="text-lg">⏳</span>
-        <span className="font-semibold text-amber-400">Request Under Review</span>
+        <span className="font-semibold text-amber-600 dark:text-amber-400">Request Under Review</span>
       </div>
 
       {escalation.case_id && !escalation.case_id.startsWith("evt_") && (
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-muted-foreground">Reference ID:</span>
-          <span className="inline-flex items-center rounded border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 font-mono text-[11px] text-amber-300">
+          <span className="inline-flex items-center rounded border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 font-mono text-[11px] text-amber-700 dark:text-amber-300">
             {escalation.case_id}
           </span>
         </div>
@@ -945,7 +945,7 @@ export default function ChatPage() {
         {/* Escalation banner */}
         {escalation && (
           <div className="mx-auto w-full max-w-3xl px-4 pt-4">
-            <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
+            <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
               <span className="text-base shrink-0">⏳</span>
               <div className="flex-1 min-w-0">
                 <span className="font-medium">
@@ -953,14 +953,14 @@ export default function ChatPage() {
                 </span>{" "}
                 You&apos;ll be notified when a decision is made.
                 {escalation.case_id && !escalation.case_id.startsWith("evt_") && (
-                  <span className="ml-2 inline-flex items-center rounded border border-amber-500/40 bg-amber-500/20 px-2 py-0.5 font-mono text-[11px] text-amber-300">
+                  <span className="ml-2 inline-flex items-center rounded border border-amber-500/40 bg-amber-500/20 px-2 py-0.5 font-mono text-[11px] text-amber-700 dark:text-amber-300">
                     Reference: {escalation.case_id}
                   </span>
                 )}
                 {(escalation.risk_label || escalation.risk_score !== undefined) && (
                   <div className="mt-1.5 flex items-center gap-2 flex-wrap">
                     {escalation.risk_label && (
-                      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-amber-500/20 text-amber-300">
+                      <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-amber-500/20 text-amber-700 dark:text-amber-300">
                         {escalation.risk_label}
                       </span>
                     )}
@@ -982,7 +982,7 @@ export default function ChatPage() {
               </div>
               <button
                 onClick={() => setEscalation(null)}
-                className="ml-auto shrink-0 text-amber-400/60 hover:text-amber-400 text-base leading-none"
+                className="ml-auto shrink-0 text-amber-600/60 dark:text-amber-400/60 hover:text-amber-600 dark:hover:text-amber-400 text-base leading-none"
                 aria-label="Dismiss"
               >
                 <X className="w-4 h-4" />
