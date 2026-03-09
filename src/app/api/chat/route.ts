@@ -27,20 +27,6 @@ interface ChatRequest {
   conversation_id?: string;
 }
 
-interface DecisionTrace {
-  proposed_decision_type: string;
-  effective_decision_type: string;
-  gateway_action: string;
-  risk_score?: number;
-  risk_label?: string;
-  harm_signal_override: boolean;
-  mismatch_detected: boolean;
-  schema_aligned: boolean;
-  structured_inputs_summary: Record<string, string>;
-  free_text_excerpt: string;
-  escalation_reasons: string[];
-}
-
 const MAX_CONVERSATION_TITLE_LENGTH = 60;
 
 const BENEFICIARY_ID_PATTERN = /\b(BEN-[A-Z0-9]+|ATL-[A-Z0-9-]+)\b/i;
@@ -346,43 +332,6 @@ export async function POST(req: NextRequest) {
 
       const responseTimestamp = new Date().toISOString();
 
-      // ── Build decision trace ──────────────────────────────────────────────
-      const gatewayAction = result.transient_error
-        ? "SYSTEM_ERROR"
-        : result.escalated
-          ? result.risk_label === "BLOCK"
-            ? "BLOCK"
-            : "NEEDS_HUMAN"
-          : "ALLOW";
-
-      const harmSignalOverride =
-        result.risk_label === "BLOCK" || (result.risk_score !== undefined && result.risk_score >= 85);
-
-      // Build structured_inputs_summary from tool arguments (exclude long free-text fields)
-      const structuredInputsSummary: Record<string, string> = {};
-      for (const [k, v] of Object.entries(toolCall.arguments)) {
-        if (k !== "reason" && k !== "changes") {
-          structuredInputsSummary[k] = String(v);
-        }
-      }
-
-      // Schema is aligned when the required beneficiary_id field is present
-      const schemaAligned = typeof toolCall.arguments.beneficiary_id === "string" && toolCall.arguments.beneficiary_id.length > 0;
-
-      const decisionTrace: DecisionTrace = {
-        proposed_decision_type: result.proposed_decision_type ?? toolCall.name,
-        effective_decision_type: result.effective_decision_type ?? gatewayAction,
-        gateway_action: gatewayAction,
-        risk_score: result.risk_score,
-        risk_label: result.risk_label,
-        harm_signal_override: result.harm_signals_detected ?? harmSignalOverride,
-        mismatch_detected: result.decision_validated !== undefined ? !result.decision_validated : result.escalated,
-        schema_aligned: schemaAligned,
-        structured_inputs_summary: structuredInputsSummary,
-        free_text_excerpt: message.slice(0, 200),
-        escalation_reasons: result.risk_rationale ? [result.risk_rationale] : [],
-      };
-
       if (user && conversationId) {
         const escalationMeta =
           result.escalated && result.case_id
@@ -403,7 +352,6 @@ export async function POST(req: NextRequest) {
           role: "assistant",
           content: result.reply,
           ...(escalationMeta ? { metadata: escalationMeta } : {}),
-          decision_trace: decisionTrace,
         });
         await supabaseAdmin
           .from("conversations")
@@ -422,7 +370,6 @@ export async function POST(req: NextRequest) {
         policy_refs: result.policy_refs,
         recommended_action: result.recommended_action,
         timestamp: responseTimestamp,
-        decision_trace: decisionTrace,
       });
     } catch (err) {
       console.error("[chat/route] MCP SSE gateway error, falling back:", err);

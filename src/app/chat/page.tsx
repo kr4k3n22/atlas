@@ -20,7 +20,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { createClient } from "@/lib/supabaseClient";
 import { sanitizeRationale } from "@/lib/mcpClient";
 import { toast } from "sonner";
-import DecisionTrace, { type DecisionTraceData } from "@/components/DecisionTrace";
 import ChatMarkdown from "@/components/ChatMarkdown";
 import { APPROVER_SLUGS, APPROVERS } from "@/lib/approvers";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -45,7 +44,6 @@ type Message = {
   metadata?: {
     escalation?: EscalationMeta;
   };
-  decision_trace?: DecisionTraceData;
 };
 
 type Conversation = {
@@ -660,7 +658,6 @@ export default function ChatPage() {
         content: data.reply ?? "Sorry, I couldn't process your request. Please try again.",
         created_at: new Date().toISOString(),
         ...(escalationData ? { metadata: { escalation: escalationData } } : {}),
-        ...(data.decision_trace ? { decision_trace: data.decision_trace as DecisionTraceData } : {}),
       };
       setMessages((prev) => [...prev, assistantMsg]);
 
@@ -1059,9 +1056,6 @@ export default function ChatPage() {
                       <EscalationCard escalation={msgEscalation} timestamp={msg.created_at} />
                     ) : (
                       <ChatMarkdown text={stripInlineJson(msg.content)} />
-                    )}
-                    {msg.role === "assistant" && msg.decision_trace && (
-                      <DecisionTrace trace={msg.decision_trace} />
                     )}
                     <div className="flex items-center justify-between mt-1 gap-2">
                       {msg.role === "assistant" && (
