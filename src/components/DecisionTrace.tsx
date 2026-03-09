@@ -24,14 +24,14 @@ function gatewayActionBadge(action: string) {
   if (action === "NEEDS_HUMAN" || action === "BLOCKED_PENDING_REVIEW" || action === "ESCALATE")
     return "bg-orange-500/90 text-white border-orange-400/40";
   if (action === "ALLOW" || action === "APPROVED")
-    return "bg-green-600/90 text-white border-green-500/40";
+    return "bg-blue-600/90 text-white border-blue-500/40";
   return "bg-slate-600/60 text-slate-100 border-slate-500/40";
 }
 
 function riskLabelBadge(label: string) {
   if (label === "BLOCK") return "bg-red-600/90 text-white border-red-500/40";
   if (label === "ESCALATE") return "bg-orange-500/90 text-white border-orange-400/40";
-  if (label === "ROUTINE") return "bg-green-600/90 text-white border-green-500/40";
+  if (label === "ROUTINE") return "bg-blue-600/90 text-white border-blue-500/40";
   return "bg-slate-600/60 text-slate-100 border-slate-500/40";
 }
 
@@ -51,9 +51,9 @@ function humanReadableToolName(toolName: string): string {
 
 function humanReadableAction(action: string): string {
   const map: Record<string, string> = {
-    ALLOW: "Allow",
-    APPROVED: "Approved",
-    BLOCK: "Block",
+    ALLOW: "Automated (Pass-through)",
+    APPROVED: "Automated (Pass-through)",
+    BLOCK: "Blocked (Override)",
     NEEDS_HUMAN: "Needs Human Review",
     BLOCKED_PENDING_REVIEW: "Blocked — Pending Review",
     ESCALATE: "Escalate",
@@ -100,10 +100,10 @@ export default function DecisionTrace({ trace }: DecisionTraceProps) {
 
           {/* Pipeline summary row */}
           <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-            <TraceRow label="Proposed by chatbot" value={humanReadableToolName(trace.proposed_decision_type)} />
-            <TraceRow label="Effective decision" value={humanReadableAction(trace.effective_decision_type)} />
+            <TraceRow label="Proposed tool action" value={humanReadableToolName(trace.proposed_decision_type)} />
+            <TraceRow label="Final tool action" value={humanReadableAction(trace.effective_decision_type)} />
             <TraceRow
-              label="Gateway action"
+              label="System routing"
               value={
                 <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${gatewayActionBadge(trace.gateway_action)}`}>
                   {humanReadableAction(trace.gateway_action)}
@@ -186,7 +186,7 @@ export default function DecisionTrace({ trace }: DecisionTraceProps) {
           {escalationSummary && (
             <div>
               <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider mb-1">
-                Why this was escalated / blocked
+                Routing rationale
               </p>
               <p className="text-foreground/80 leading-relaxed">{escalationSummary}</p>
             </div>
@@ -235,7 +235,7 @@ function buildEscalationSummary(trace: DecisionTraceData): string | null {
 
   if (gateway_action === "ALLOW" || gateway_action === "APPROVED") {
     if (!harm_signal_override && !mismatch_detected) {
-      return `Auto-approved: no harm signals detected, decision type matched, ${risk_score !== undefined ? `risk score ${risk_score}/100 (${risk_label ?? "low"})` : "low risk"}.`;
+      return `Auto-processed: no harm signals detected, decision type matched, ${risk_score !== undefined ? `risk score ${risk_score}/100 (${risk_label ?? "low"})` : "low risk"}.`;
     }
   }
 
@@ -261,7 +261,7 @@ function buildEscalationSummary(trace: DecisionTraceData): string | null {
 
   const action =
     gateway_action === "BLOCK" || gateway_action === "BLOCKED_PENDING_REVIEW"
-      ? "Blocked pending review"
+      ? "Intervention: Blocked pending review"
       : "Escalated for human review";
 
   return `${action} because: ${parts.join("; ")}.`;
