@@ -10,7 +10,6 @@ import { loadSettings, onSettingsChange } from "@/lib/userSettings";
 
 type RiskLabel = "ROUTINE" | "ESCALATE" | "BLOCK";
 type CaseStatus = "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "NEEDS_INFO" | "CLOSED";
-type QuickFilter = "ALL" | "HIGH_RISK" | "WAITING_24H" | "ARTICLE14";
 type SignalLevel = "none" | "low" | "moderate" | "strong" | "medium" | "high" | "weak";
 type RecommendedAction =
   | "auto_approve"
@@ -597,7 +596,6 @@ export default function CasesPage() {
   const [tab, setTab] = useState<"PENDING" | "APPROVED" | "REJECTED" | "ALL">("PENDING");
   const [q, setQ] = useState("");
   const [risk, setRisk] = useState<"ALL" | RiskLabel>("ALL");
-  const [quick, setQuick] = useState<QuickFilter>("ALL");
   const [signalFilter, setSignalFilter] = useState<"ALL" | SignalLevel>("ALL");
   const [actionFilter, setActionFilter] = useState<"ALL" | RecommendedAction>("ALL");
 
@@ -834,12 +832,6 @@ export default function CasesPage() {
         if (tab === "REJECTED" && c.status !== "REJECTED") return false;
         if (risk !== "ALL" && c.risk_label !== risk) return false;
 
-        if (quick === "HIGH_RISK" && !(c.risk_label === "ESCALATE" || c.risk_label === "BLOCK")) {
-          return false;
-        }
-        if (quick === "WAITING_24H" && hoursSince(c.created_at) < 24) return false;
-        if (quick === "ARTICLE14" && !isArticle14Risk(c)) return false;
-
         if (signalFilter !== "ALL") {
           const sl = getCaseSignalLevel(c);
           const norm = normalizeSignalLevel(signalFilter);
@@ -869,7 +861,7 @@ export default function CasesPage() {
       })
       .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [all, tab, risk, q, quick, signalFilter, actionFilter, now]);
+  }, [all, tab, risk, q, signalFilter, actionFilter, now]);
 
   const selected = useMemo(() => {
     if (!selectedId) return null;
@@ -964,37 +956,6 @@ export default function CasesPage() {
               onClick={() => setTab("ALL")}
             >
               All ({counts.all})
-            </button>
-          </div>
-
-          {/* Quick filters */}
-          <div className="inline-flex items-center gap-2">
-            <button
-              className={cx(
-                "h-8 rounded-full border px-3 text-xs",
-                quick === "HIGH_RISK" ? "border-amber-400/60 bg-amber-400/15" : "border-muted/60 bg-background/40"
-              )}
-              onClick={() => setQuick(quick === "HIGH_RISK" ? "ALL" : "HIGH_RISK")}
-            >
-              High risk only
-            </button>
-            <button
-              className={cx(
-                "h-8 rounded-full border px-3 text-xs",
-                quick === "WAITING_24H" ? "border-rose-400/60 bg-rose-400/15" : "border-muted/60 bg-background/40"
-              )}
-              onClick={() => setQuick(quick === "WAITING_24H" ? "ALL" : "WAITING_24H")}
-            >
-              Waiting &gt; 24h
-            </button>
-            <button
-              className={cx(
-                "h-8 rounded-full border px-3 text-xs",
-                quick === "ARTICLE14" ? "border-orange-400/60 bg-orange-400/15" : "border-muted/60 bg-background/40"
-              )}
-              onClick={() => setQuick(quick === "ARTICLE14" ? "ALL" : "ARTICLE14")}
-            >
-              Article 14 Risk
             </button>
           </div>
 
