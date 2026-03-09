@@ -1219,79 +1219,79 @@ export default function CasesPage() {
                     ) : null}
                   </div>
 
-                </div>
 
-                {/* Decision panel */}
-                <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
-                  <div className="text-xs font-semibold text-muted-foreground">Decision</div>
 
-                  {approverName ? (
-                    <div className="mt-3 rounded-md border border-muted/40 bg-background/40 px-3 py-2 text-xs">
-                      Deciding as: <strong className="text-foreground">{approverName}</strong>
+                  {/* Decision panel */}
+                  <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
+                    <div className="text-xs font-semibold text-muted-foreground">Decision</div>
+
+                    {approverName ? (
+                      <div className="mt-3 rounded-md border border-muted/40 bg-background/40 px-3 py-2 text-xs">
+                        Deciding as: <strong className="text-foreground">{approverName}</strong>
+                      </div>
+                    ) : (
+                      <div className="mt-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+                        Unable to identify your approver account. Log out and back in.
+                      </div>
+                    )}
+
+                    <textarea
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      placeholder="Reasoning, next steps, or info request... (required)"
+                      className="mt-3 h-24 w-full resize-y rounded-md border border-muted/60 bg-background/40 p-2 text-sm outline-none focus:ring-2 focus:ring-foreground/30"
+                    />
+
+                    {approverName && !note.trim() && (
+                      <div className="mt-2 rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-300">
+                        Enter a note before making a decision.
+                      </div>
+                    )}
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        disabled={busy || !canDecide}
+                        onClick={() => onDecision("APPROVE")}
+                        className={cx(
+                          "h-9 rounded-md border px-3 text-sm shadow-sm",
+                          "border-green-500/60 bg-green-500/20 hover:bg-green-500/30",
+                          (busy || !canDecide) && "opacity-50 cursor-not-allowed"
+                        )}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        disabled={busy || !canDecide}
+                        onClick={() => onDecision("REJECT")}
+                        className={cx(
+                          "h-9 rounded-md border px-3 text-sm shadow-sm",
+                          "border-red-500/60 bg-red-500/20 hover:bg-red-500/30",
+                          (busy || !canDecide) && "opacity-50 cursor-not-allowed"
+                        )}
+                      >
+                        Reject
+                      </button>
+                      <button
+                        disabled={busy || !canDecide}
+                        onClick={() => onDecision("REQUEST_INFO")}
+                        className={cx(
+                          "h-9 rounded-md border px-3 text-sm shadow-sm",
+                          "border-yellow-500/60 bg-yellow-500/20 hover:bg-yellow-500/30",
+                          (busy || !canDecide) && "opacity-50 cursor-not-allowed"
+                        )}
+                      >
+                        Request info
+                      </button>
                     </div>
-                  ) : (
-                    <div className="mt-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-400">
-                      Unable to identify your approver account. Log out and back in.
-                    </div>
-                  )}
-
-                  <textarea
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="Reasoning, next steps, or info request... (required)"
-                    className="mt-3 h-24 w-full resize-y rounded-md border border-muted/60 bg-background/40 p-2 text-sm outline-none focus:ring-2 focus:ring-foreground/30"
-                  />
-
-                  {approverName && !note.trim() && (
-                    <div className="mt-2 rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-300">
-                      Enter a note before making a decision.
-                    </div>
-                  )}
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      disabled={busy || !canDecide}
-                      onClick={() => onDecision("APPROVE")}
-                      className={cx(
-                        "h-9 rounded-md border px-3 text-sm shadow-sm",
-                        "border-green-500/60 bg-green-500/20 hover:bg-green-500/30",
-                        (busy || !canDecide) && "opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      Approve
-                    </button>
-                    <button
-                      disabled={busy || !canDecide}
-                      onClick={() => onDecision("REJECT")}
-                      className={cx(
-                        "h-9 rounded-md border px-3 text-sm shadow-sm",
-                        "border-red-500/60 bg-red-500/20 hover:bg-red-500/30",
-                        (busy || !canDecide) && "opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      Reject
-                    </button>
-                    <button
-                      disabled={busy || !canDecide}
-                      onClick={() => onDecision("REQUEST_INFO")}
-                      className={cx(
-                        "h-9 rounded-md border px-3 text-sm shadow-sm",
-                        "border-yellow-500/60 bg-yellow-500/20 hover:bg-yellow-500/30",
-                        (busy || !canDecide) && "opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      Request info
-                    </button>
                   </div>
                 </div>
-              </div>
-          </>
-          ) : (
-          <div className="text-sm text-muted-foreground">Select a case to see details.</div>
+              </>
+            ) : (
+              <div className="text-sm text-muted-foreground">Select a case to see details.</div>
             )}
+          </div>
         </div>
       </div>
     </div>
-    </div >
   );
 }
