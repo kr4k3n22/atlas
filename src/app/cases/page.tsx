@@ -1069,9 +1069,6 @@ export default function CasesPage() {
                               )}
                             >
                               {c.risk_label}
-                              <span className="rounded-[2px] bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none" title="Gateway Risk Score — internal routing score used for case prioritization">
-                                {Math.round(c.risk_score)}
-                              </span>
                             </span>
                           </td>
                           <td className="px-3 py-3 align-top">
@@ -1159,9 +1156,6 @@ export default function CasesPage() {
                       )}
                     >
                       {selected.risk_label}
-                      <span className="rounded-[2px] bg-black/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums leading-none" title="Gateway Risk Score — internal routing score used for case prioritization">
-                        {Math.round(selected.risk_score)}
-                      </span>
                     </span>
                   </div>
                 </div>
@@ -1225,114 +1219,79 @@ export default function CasesPage() {
                     ) : null}
                   </div>
 
-                  {/* Policy refs */}
-                  <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
-                    <div className="text-xs font-semibold text-muted-foreground">Policy refs</div>
-                    {selected.policy_refs?.length ? (
-                      <ul className="mt-2 list-disc pl-5 text-sm">
-                        {selected.policy_refs.map((p, i) => (
-                          <li key={p + ":" + i} className="break-words">
-                            {p}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <div className="mt-2 text-sm text-muted-foreground">None</div>
-                    )}
-                  </div>
+                </div>
 
-                  {/* Audit trail */}
-                  <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
-                    <div className="text-xs font-semibold text-muted-foreground">Audit trail</div>
-                    {selected.audit_trail?.length ? (
-                      <div className="mt-2 space-y-2 text-sm">
-                        {selected.audit_trail.map((a, i) => (
-                          <div key={a.ts + ":" + i} className="rounded-md border border-muted/40 p-2">
-                            <div className="text-xs text-muted-foreground">
-                              {fmtTs(a.ts)} - {a.actor} - {a.action}
-                            </div>
-                            {a.detail ? (
-                              <JsonOrTextDisplay value={a.detail} />
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="mt-2 text-sm text-muted-foreground">No audit entries.</div>
-                    )}
-                  </div>
+                {/* Decision panel */}
+                <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
+                  <div className="text-xs font-semibold text-muted-foreground">Decision</div>
 
-                  {/* Decision panel */}
-                  <div className="rounded-lg border border-muted/60 bg-background/30 p-3">
-                    <div className="text-xs font-semibold text-muted-foreground">Decision</div>
-
-                    {approverName ? (
-                      <div className="mt-3 rounded-md border border-muted/40 bg-background/40 px-3 py-2 text-xs">
-                        Deciding as: <strong className="text-foreground">{approverName}</strong>
-                      </div>
-                    ) : (
-                      <div className="mt-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-400">
-                        Unable to identify your approver account. Log out and back in.
-                      </div>
-                    )}
-
-                    <textarea
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      placeholder="Reasoning, next steps, or info request... (required)"
-                      className="mt-3 h-24 w-full resize-y rounded-md border border-muted/60 bg-background/40 p-2 text-sm outline-none focus:ring-2 focus:ring-foreground/30"
-                    />
-
-                    {approverName && !note.trim() && (
-                      <div className="mt-2 rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-300">
-                        Enter a note before making a decision.
-                      </div>
-                    )}
-
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        disabled={busy || !canDecide}
-                        onClick={() => onDecision("APPROVE")}
-                        className={cx(
-                          "h-9 rounded-md border px-3 text-sm shadow-sm",
-                          "border-green-500/60 bg-green-500/20 hover:bg-green-500/30",
-                          (busy || !canDecide) && "opacity-50 cursor-not-allowed"
-                        )}
-                      >
-                        Approve
-                      </button>
-                      <button
-                        disabled={busy || !canDecide}
-                        onClick={() => onDecision("REJECT")}
-                        className={cx(
-                          "h-9 rounded-md border px-3 text-sm shadow-sm",
-                          "border-red-500/60 bg-red-500/20 hover:bg-red-500/30",
-                          (busy || !canDecide) && "opacity-50 cursor-not-allowed"
-                        )}
-                      >
-                        Reject
-                      </button>
-                      <button
-                        disabled={busy || !canDecide}
-                        onClick={() => onDecision("REQUEST_INFO")}
-                        className={cx(
-                          "h-9 rounded-md border px-3 text-sm shadow-sm",
-                          "border-yellow-500/60 bg-yellow-500/20 hover:bg-yellow-500/30",
-                          (busy || !canDecide) && "opacity-50 cursor-not-allowed"
-                        )}
-                      >
-                        Request info
-                      </button>
+                  {approverName ? (
+                    <div className="mt-3 rounded-md border border-muted/40 bg-background/40 px-3 py-2 text-xs">
+                      Deciding as: <strong className="text-foreground">{approverName}</strong>
                     </div>
+                  ) : (
+                    <div className="mt-3 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+                      Unable to identify your approver account. Log out and back in.
+                    </div>
+                  )}
+
+                  <textarea
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Reasoning, next steps, or info request... (required)"
+                    className="mt-3 h-24 w-full resize-y rounded-md border border-muted/60 bg-background/40 p-2 text-sm outline-none focus:ring-2 focus:ring-foreground/30"
+                  />
+
+                  {approverName && !note.trim() && (
+                    <div className="mt-2 rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-300">
+                      Enter a note before making a decision.
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      disabled={busy || !canDecide}
+                      onClick={() => onDecision("APPROVE")}
+                      className={cx(
+                        "h-9 rounded-md border px-3 text-sm shadow-sm",
+                        "border-green-500/60 bg-green-500/20 hover:bg-green-500/30",
+                        (busy || !canDecide) && "opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      disabled={busy || !canDecide}
+                      onClick={() => onDecision("REJECT")}
+                      className={cx(
+                        "h-9 rounded-md border px-3 text-sm shadow-sm",
+                        "border-red-500/60 bg-red-500/20 hover:bg-red-500/30",
+                        (busy || !canDecide) && "opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      Reject
+                    </button>
+                    <button
+                      disabled={busy || !canDecide}
+                      onClick={() => onDecision("REQUEST_INFO")}
+                      className={cx(
+                        "h-9 rounded-md border px-3 text-sm shadow-sm",
+                        "border-yellow-500/60 bg-yellow-500/20 hover:bg-yellow-500/30",
+                        (busy || !canDecide) && "opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      Request info
+                    </button>
                   </div>
                 </div>
-              </>
-            ) : (
-              <div className="text-sm text-muted-foreground">Select a case to see details.</div>
+              </div>
+          </>
+          ) : (
+          <div className="text-sm text-muted-foreground">Select a case to see details.</div>
             )}
-          </div>
         </div>
       </div>
     </div>
+    </div >
   );
 }
