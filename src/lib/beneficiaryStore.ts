@@ -4,8 +4,9 @@
  * Queries the PostgreSQL welfare-claims schema to retrieve claimant profile
  * data for grounding the AI chat agent's responses.
  *
- * Data source: app.claimant_case (via get_claimant_profile_summary and
- * get_claimant_intake_payload RPCs).
+ * Data source: app.claimant_case_detailed (canonical flat-column view).
+ * A single row read replaces the legacy dual-RPC approach that parsed
+ * nested JSONB at both DB and application layers.
  *
  * All monetary amounts are stored in minor currency units (pence for GBP).
  * Consumer code should convert to display units when presenting to users.
@@ -26,7 +27,7 @@ export interface ClaimantProfile {
   currentApplicationStatus: string | null;
   currentApplicationRef: string | null;
   programs: string[];
-  // Extended grounding data from intake payload
+  // Extended grounding data from flat columns
   idvStatus?: string;
   residencyStatus?: string;
   employerReportStatus?: string;
@@ -55,60 +56,79 @@ export interface ApplicationStatus {
 
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Internal helper — single row read from app.claimant_case_detailed
+// ──────────────────────────────────────────────────────────────────────────────
+
+async function fetchDetailedRow(
+  beneficiaryId: string,
+): Promise<Record<string, unknown> | null> {
+  const { data, error } = await (supabaseAdmin as any)
+    .schema("app")
+    .from("claimant_case_detailed")
+    .select("*")
+    .eq("beneficiary_id", beneficiaryId)
+    .single();
+
+  if (error || !data) return null;
+  return data as Record<string, unknown>;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // getClaimantProfile
 // ──────────────────────────────────────────────────────────────────────────────
 
 /**
- * Builds a comprehensive claimant profile from app.claimant_case via
- * get_claimant_profile_summary and get_claimant_intake_payload RPCs.
+ * Builds a comprehensive claimant profile from a single read of
+ * app.claimant_case_detailed (flat columns).
  *
  * @param beneficiaryId  The external reference (e.g. "BEN-ATLAS-001")
  */
 export async function getClaimantProfile(
   beneficiaryId: string,
 ): Promise<ClaimantProfile | null> {
-  const [summaryResult, payloadResult] = await Promise.all([
-    supabaseAdmin.rpc("get_claimant_profile_summary", { p_beneficiary_id: beneficiaryId }),
-    supabaseAdmin.rpc("get_claimant_intake_payload", { p_beneficiary_id: beneficiaryId }),
-  ]);
+  const row = await fetchDetailedRow(beneficiaryId);
+  if (!row) return null;
 
-  const summary = summaryResult.data?.[0] ?? null;
-  if (!summary) return null;
+  // docs_* columns may be stored as arrays or comma-separated strings
+  const docsRequested = toStringArray(row.docs_requested);
+  const docsReceived  = toStringArray(row.docs_received);
+  const docsQuality   = (row.docs_quality as string | null) ?? "unknown";
 
-  const payload = (payloadResult.data ?? null) as Record<string, unknown> | null;
-  const structuredInputs = (payload?.structured_inputs ?? {}) as Record<string, unknown>;
+  const hasDocsData =
+    docsRequested.length > 0 || docsReceived.length > 0 || docsQuality !== "unknown";
 
-  const employmentStatus =
-    (structuredInputs.employment_status_declared as string | undefined) ?? null;
-  const dateOfBirth =
-    (structuredInputs.dob as string | undefined) ??
-    (structuredInputs.date_of_birth as string | undefined) ??
-    null;
+  // harm_signal_type may be stored as an array or a single string
+  const harmTypes = toStringArray(row.harm_signal_type);
+  const harmLevel = (row.harm_signal_level as string | null) ?? "none";
 
   return {
-    claimantId: summary.beneficiary_id as string,
-    externalRef: summary.beneficiary_id as string,
-    fullName: summary.claimant_name as string,
-    dateOfBirth,
-    employmentStatus,
-    currentApplicationStatus: (summary.decision_type as string | null) ?? null,
-    currentApplicationRef: (summary.case_id as string | null) ?? null,
-    programs: summary.benefit_type ? [summary.benefit_type as string] : [],
-    idvStatus: (structuredInputs.idv_status as string) ?? undefined,
-    residencyStatus: (structuredInputs.residency_status as string) ?? undefined,
-    employerReportStatus: (structuredInputs.employer_report_status as string) ?? undefined,
-    contributionRecordStatus: (structuredInputs.contributions_record_status as string) ?? undefined,
-    docsStatus: structuredInputs.docs_status ? {
-      requested: (structuredInputs.docs_status as any).docs_requested || [],
-      received: (structuredInputs.docs_status as any).docs_received || [],
-      quality: (structuredInputs.docs_status as any).docs_quality || "unknown",
-    } : undefined,
-    harmSignals: payload?.harm_rights_signals ? {
-      level: (payload.harm_rights_signals as any).signal_level || "none",
-      types: (payload.harm_rights_signals as any).signal_type || [],
-      notes: (payload.harm_rights_signals as any).notes || "",
-    } : undefined,
-    caseworkerNote: (payload?.free_text as any)?.caseworker_note || undefined,
+    claimantId:               (row.beneficiary_id as string),
+    externalRef:              (row.beneficiary_id as string),
+    fullName:                 (row.claimant_name as string),
+    dateOfBirth:              null, // not stored in claimant_case_detailed
+    employmentStatus:         (row.employment_status_declared as string | null) ?? null,
+    currentApplicationStatus: (row.decision_type as string | null) ?? null,
+    currentApplicationRef:    (row.case_id as string | null) ?? null,
+    programs:                 row.benefit_type ? [(row.benefit_type as string)] : [],
+
+    idvStatus:                (row.idv_status as string | undefined) ?? undefined,
+    residencyStatus:          (row.residency_status as string | undefined) ?? undefined,
+    employerReportStatus:     (row.employer_report_status as string | undefined) ?? undefined,
+    contributionRecordStatus: (row.contributions_record_status as string | undefined) ?? undefined,
+
+    docsStatus: hasDocsData
+      ? { requested: docsRequested, received: docsReceived, quality: docsQuality }
+      : undefined,
+
+    harmSignals: harmLevel !== "none"
+      ? {
+          level: harmLevel,
+          types: harmTypes,
+          notes: (row.harm_signal_notes as string | null) ?? "",
+        }
+      : undefined,
+
+    caseworkerNote: (row.caseworker_note as string | undefined) ?? undefined,
   };
 }
 
@@ -125,19 +145,15 @@ export async function getClaimantProfile(
 export async function getClaimantApplicationStatus(
   beneficiaryId: string,
 ): Promise<ApplicationStatus | null> {
-  const { data, error } = await supabaseAdmin
-    .rpc("get_claimant_profile_summary", { p_beneficiary_id: beneficiaryId });
-
-  if (error || !data?.length) return null;
-
-  const summary = data[0];
+  const row = await fetchDetailedRow(beneficiaryId);
+  if (!row) return null;
 
   return {
-    applicationId: summary.case_id as string,
-    applicationRef: summary.case_id as string,
-    statusCode: (summary.decision_type as string) ?? "pending",
-    submittedAt: (summary.timestamp_utc as string | null) ?? null,
-    programs: summary.benefit_type ? [summary.benefit_type as string] : [],
+    applicationId: (row.case_id as string) ?? beneficiaryId,
+    applicationRef: (row.case_id as string) ?? beneficiaryId,
+    statusCode: (row.decision_type as string) ?? "pending",
+    submittedAt: (row.timestamp_utc as string | null) ?? null,
+    programs: row.benefit_type ? [(row.benefit_type as string)] : [],
   };
 }
 
@@ -207,4 +223,22 @@ export function buildProfileContext(profile: ClaimantProfile): string {
   }
 
   return lines.join("\n");
+}
+
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Internal utilities
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Coerces a DB column value to a string array.
+ * Handles: null/undefined → [], PostgreSQL arrays (JS Array), comma-separated string.
+ */
+function toStringArray(value: unknown): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter(Boolean).map(String);
+  if (typeof value === "string" && value.trim()) {
+    return value.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
 }

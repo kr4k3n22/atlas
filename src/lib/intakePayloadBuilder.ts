@@ -205,7 +205,7 @@ export interface BuildIntakePayloadOptions {
   caseId?: string;
   /** ISO 3166-1 alpha-2 jurisdiction code (default "GB") */
   jurisdiction?: string;
-  /** Pre-stored intake payload from claimant_case table — merged as base, with live data overlaid */
+  /** Pre-stored intake payload from claimant_case_detailed — merged as base, with live data overlaid */
   storedPayload?: Record<string, unknown> | null;
   /** Explicit decision type override from current turn */
   decisionType?: IntakePayload["decision_context"]["decision_type"];
@@ -293,15 +293,85 @@ export function buildIntakePayload(options: BuildIntakePayloadOptions): IntakePa
 // ──────────────────────────────────────────────────────────────────────────────
 
 /**
- * Fetches the stored intake_payload JSONB from app.claimant_case via
- * the get_claimant_intake_payload RPC. Returns null on any error.
+ * Fetches a row from app.claimant_case_detailed and reconstructs the nested
+ * IntakePayload-compatible object that the rest of the codebase expects.
+ *
+ * Replaces the legacy get_claimant_intake_payload RPC which returned a raw
+ * JSONB blob from the old intake_payload column.
  */
-export async function getStoredIntakePayload(beneficiaryId: string): Promise<Record<string, unknown> | null> {
-  const { data, error } = await supabaseAdmin.rpc("get_claimant_intake_payload", {
-    p_beneficiary_id: beneficiaryId,
-  });
+export async function getStoredIntakePayload(
+  beneficiaryId: string,
+): Promise<Record<string, unknown> | null> {
+  const { data, error } = await (supabaseAdmin as any)
+    .schema("app")
+    .from("claimant_case_detailed")
+    .select("*")
+    .eq("beneficiary_id", beneficiaryId)
+    .single();
+
   if (error || !data) return null;
-  return data as Record<string, unknown>;
+
+  const row = data as Record<string, unknown>;
+
+  // Re-assemble the nested shape that buildIntakePayload's storedPayload
+  // parameter (and its spread-merge logic) expects.
+  return {
+    case_id: row.case_id ?? null,
+    timestamp_utc: row.timestamp_utc ?? null,
+    jurisdiction: row.jurisdiction ?? null,
+    benefit_type: row.benefit_type ?? null,
+
+    decision_context: {
+      decision_type: row.decision_type ?? "continue_review",
+      channel: row.channel ?? "assisted",
+      payment_due_within_days: row.payment_due_within_days ?? null,
+      case_age_days: row.case_age_days ?? null,
+    },
+
+    structured_inputs: {
+      idv_status: row.idv_status ?? "pending",
+      residency_status: row.residency_status ?? "not_verified",
+      employment_status_declared: row.employment_status_declared ?? undefined,
+      separation_reason_declared: row.separation_reason_declared ?? undefined,
+      employer_report_status: row.employer_report_status ?? undefined,
+      contributions_record_status: row.contributions_record_status ?? undefined,
+      earnings_record_last_30d: row.earnings_record_last_30d ?? undefined,
+      income_verification: row.income_verification ?? undefined,
+      other_benefits_overlap_check: row.other_benefits_overlap_check ?? undefined,
+      bank_data_access: row.bank_data_access ?? undefined,
+      docs_status: {
+        docs_requested: toStringArray(row.docs_requested),
+        docs_received: toStringArray(row.docs_received),
+        docs_quality: (row.docs_quality as string | null) ?? "valid",
+      },
+      engagement_barriers: {
+        language_barrier: (row.language_barrier as string | null) ?? "none",
+        digital_access: (row.digital_access as string | null) ?? undefined,
+        disability_accommodation_needed: (row.disability_accommodation_needed as string | null) ?? "no",
+      },
+      fraud_signals: {
+        identity_duplicate_match: (row.identity_duplicate_match as string | null) ?? "none",
+        device_or_address_reuse: (row.device_or_address_reuse as string | null) ?? undefined,
+        document_tampering: (row.document_tampering as string | null) ?? "none",
+      },
+    },
+
+    free_text: {
+      claimant_message: (row.claimant_message as string | null) ?? "",
+      agent_chat_transcript_excerpt: (row.agent_chat_transcript_excerpt as string | null) ?? "",
+      caseworker_note: (row.caseworker_note as string | null) ?? undefined,
+    },
+
+    harm_rights_signals:
+      row.harm_signal_level && row.harm_signal_level !== "none"
+        ? {
+          signal_level: row.harm_signal_level,
+          signal_type: toStringArray(row.harm_signal_type),
+          signal_source: (row.harm_signal_source as string | null) ?? "system",
+          notes: (row.harm_signal_notes as string | null) ?? "",
+        }
+        : undefined,
+  };
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -333,4 +403,21 @@ export function validateIntakePayload(payload: unknown): ValidationResult {
   }
 
   return { valid: false, errors };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Internal utilities
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Coerces a DB column value to a string array.
+ * Handles: null/undefined → [], PostgreSQL arrays (JS Array), comma-separated string.
+ */
+function toStringArray(value: unknown): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter(Boolean).map(String);
+  if (typeof value === "string" && value.trim()) {
+    return value.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
 }
