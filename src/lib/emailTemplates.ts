@@ -37,7 +37,7 @@ export function approvalImplementationEmail(
     : "";
 
   return {
-    subject: `✅ ATLAS: Case ${c.id} Approved — Implementation Required`,
+    subject: `✅ ATLAS: Case ${c.id} APPROVED — Action Required`,
     html: `
       <div style="font-family: system-ui, sans-serif; max-width: 640px; margin: 0 auto; color: #111827;">
         <div style="background: #16a34a; color: white; padding: 20px 24px; border-radius: 8px 8px 0 0;">
