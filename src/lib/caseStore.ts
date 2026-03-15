@@ -189,8 +189,6 @@ export async function applyDecision(input: {
       riskScore: updated.risk_score ?? 0,
       riskRationale: updated.risk_rationale ?? "",
       note: note || undefined,
-    }).catch((err) => {
-      console.warn(`[caseStore] Approval email error for ${updated.id}:`, err);
     });
   }
 
