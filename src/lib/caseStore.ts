@@ -18,6 +18,8 @@ type Decision = "APPROVE" | "REJECT" | "REQUEST_INFO";
 
 const nowIso = () => new Date().toISOString();
 
+const IMPLEMENTATION_EMAIL = "AtlasCaseActions@protonmail.com";
+
 function normalizeRow(row: any): CaseRecord {
   const normalized = {
     ...row,
@@ -178,21 +180,18 @@ export async function applyDecision(input: {
     });
 
     // --- Notify implementation team (fire-and-forget) ---
-    const implementationEmail = process.env.IMPLEMENTATION_TEAM_EMAIL;
-    if (implementationEmail) {
-      const dashboardUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://cyber295atlas.app";
-      const approvedAt = nowIso();
-      const { subject, html } = approvalImplementationEmail(
-        stripInternal(normalizeRow(updated)),
-        approver,
-        note,
-        approvedAt,
-        dashboardUrl,
-      );
-      sendEmail({ to: implementationEmail, subject, html }).catch((err) => {
-        console.error(`[caseStore] Failed to send approval implementation email for case ${updated.id}:`, err?.message ?? err);
-      });
-    }
+    const dashboardUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://cyber295atlas.app";
+    const approvedAt = nowIso();
+    const { subject, html } = approvalImplementationEmail(
+      stripInternal(normalizeRow(updated)),
+      approver,
+      note,
+      approvedAt,
+      dashboardUrl,
+    );
+    sendEmail({ to: IMPLEMENTATION_EMAIL, subject, html }).catch((err) => {
+      console.error(`[caseStore] Failed to send approval implementation email for case ${updated.id}:`, err?.message ?? err);
+    });
   }
 
   // --- Write outcome back to chat conversation ---
