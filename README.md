@@ -156,6 +156,7 @@ src/
     ├── auth.ts                   # Session management (JWT cookies)
     ├── authStore.ts              # Legacy auth helpers
     ├── caseStore.ts              # Case CRUD + decision logic + gateway notify
+    ├── emailService.ts           # Gmail SMTP approval notification (nodemailer)
     ├── gatewayClient.ts          # HTTP client for Atlas-MCP-Gateway
     ├── getAuthUser.ts            # Extract user from Supabase auth cookies
     ├── mcpClient.ts              # MCP tool call client (SSE streaming)
@@ -236,6 +237,9 @@ Open [http://localhost:3000](http://localhost:3000).
 | `GATEWAY_SHARED_SECRET` | ⬜ | Shared Bearer token for Gateway ↔ ATLAS auth |
 | `GATEWAY_URL` | ⬜ | Gateway URL for decision notifications |
 | `AUTH_SECRET` | ✅ | JWT signing secret for session cookies (min 16 chars) |
+| `EMAIL_FROM` | ⬜ | Gmail address used as the sender for approval notifications |
+| `EMAIL_APP_PASSWORD` | ⬜ | Gmail App Password for the sender account |
+| `EMAIL_TO` | ⬜ | Recipient address for implementation-team approval notifications |
 
 ---
 
@@ -460,7 +464,7 @@ The context block injected into the system prompt includes:
 7. **An approver sees the case appear** in real-time in `/cases` (via Supabase Realtime)
 8. **The approver reviews** structured inputs, risk assessment, harm/rights signals, and policy references
 9. **The approver makes a decision** (Approve / Reject / Request Info) with a mandatory note
-10. **On Approve**: the action is executed via `actionExecutionStore`, and a confirmation message is written to the citizen's chat
+10. **On Approve**: the action is executed via `actionExecutionStore`, a confirmation message is written to the citizen's chat, and an **approval notification email is sent to the implementation team**
 11. **On Reject/Request Info**: a notification message is written to the citizen's chat
 12. **The Gateway is notified** via an Inngest event (`atlas/sarah.decision`) to resume the paused workflow
 13. **Everything is logged** in the audit trail
@@ -468,6 +472,66 @@ The context block injected into the system prompt includes:
 ### Without MCP Gateway (Fallback Mode)
 
 When the Gateway is not configured, the chat API uses regex-based pattern matching to provide informational responses about unemployment benefits, eligibility, documents, and appeals. Escalation patterns (e.g., "submit", "apply now") generate case references and create records in the approval queue. The claimant data grounding still applies in fallback mode.
+
+---
+
+## Email Notification Setup
+
+When an approver approves a case, ATLAS automatically sends an email to the responsible implementation team so they can carry out the change in the real system. This simulates a real-world operational workflow instead of directly modifying production records.
+
+### What the email contains
+
+- Case ID and reference
+- Approver name and decision timestamp
+- Risk label and score
+- Citizen name and original request
+- Tool name (the action to implement) and its arguments
+- Reviewer notes
+
+### Step-by-step configuration
+
+**1. Create (or designate) a Gmail account for ATLAS notifications**
+
+Use an existing shared team account or create a new one, e.g. `atlas.notifications@gmail.com`.
+
+**2. Enable 2-Step Verification and generate a Gmail App Password**
+
+Gmail App Passwords require 2-Step Verification to be active on the sending account.
+
+1. Sign in to the Google Account you want ATLAS to send from.
+2. Go to **Google Account → Security → How you sign in to Google → 2-Step Verification** and enable it if not already on.
+3. Go to **Google Account → Security → App Passwords**  
+   (Direct URL: <https://myaccount.google.com/apppasswords>)
+4. Under "Select app" choose **Mail**; under "Select device" choose **Other** and type `ATLAS`.
+5. Click **Generate** — Google will show a 16-character password. Copy it immediately.
+
+**3. Set the environment variables**
+
+Add these three variables to your `.env.local` (or Vercel/deployment environment settings):
+
+```env
+# Gmail address that ATLAS will send from
+EMAIL_FROM=atlas.notifications@gmail.com
+
+# 16-character App Password generated in step 2 (no spaces)
+EMAIL_APP_PASSWORD=abcdabcdabcdabcd
+
+# Team inbox that should receive and act on approved cases
+EMAIL_TO=implementation-team@yourorg.com
+```
+
+**4. Redeploy (if using Vercel)**
+
+If you are deploying to Vercel, add the three variables via **Project → Settings → Environment Variables**, then trigger a new deployment so the server picks them up.
+
+**5. Test the flow**
+
+1. Log in as an approver at `/approver/login`.
+2. Open any pending case in the `/cases` dashboard.
+3. Click **Approve** — the system will execute the action and send the notification email within seconds.
+4. Check `EMAIL_TO`'s inbox for a message with subject `[ATLAS] Case Approved — CASE-XXXXXX — Action Required`.
+
+> **Tip:** If no email arrives, check your server logs for `[emailService]` warning lines. Common causes are a wrong App Password, a typo in `EMAIL_FROM`, or Gmail blocking "less secure" access from the IP of your deployment.
 
 ---
 
@@ -481,6 +545,7 @@ When the Gateway is not configured, the chat API uses regex-based pattern matchi
 
 ## Roadmap
 
+- [x] **Email notifications on case approval** — Gmail SMTP notification to implementation team with full case details
 - [ ] **Pre-escalation clarifying questions** — chatbot interviews user to gather justification before escalating
 - [ ] **Post-approval continuation** — chatbot narrates the outcome of approved actions back to the citizen
 - [ ] **REQUEST_INFO round-trip** — citizen replies route back to the case for approver re-review

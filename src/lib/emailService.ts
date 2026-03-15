@@ -1,0 +1,196 @@
+/**
+ * ATLAS Email Service
+ *
+ * Sends an approval notification email via Gmail SMTP using nodemailer.
+ * Triggered when a case is approved in the HITL workflow to notify the
+ * responsible implementation team.
+ *
+ * Required environment variables:
+ *   EMAIL_FROM          — Gmail address used as the sender (e.g. atlas.notify@gmail.com)
+ *   EMAIL_APP_PASSWORD  — Gmail App Password (not the account password)
+ *   EMAIL_TO            — Recipient address for implementation team notifications
+ */
+
+import nodemailer from "nodemailer";
+
+export interface ApprovalEmailPayload {
+  caseId: string;
+  approver: string;
+  decisionTime: string;
+  toolName: string;
+  toolArgs: Record<string, unknown>;
+  userDisplay: string;
+  userMessage: string;
+  riskLabel: string;
+  riskScore: number;
+  riskRationale: string;
+  note?: string;
+}
+
+function buildHtmlBody(p: ApprovalEmailPayload): string {
+  const toolArgsHtml = Object.entries(p.toolArgs)
+    .filter(([k]) => k !== "conversation_id" && k !== "gateway_event_id")
+    .map(
+      ([k, v]) =>
+        `<tr>
+          <td style="padding:4px 8px;font-weight:600;white-space:nowrap;vertical-align:top;">${escHtml(k)}</td>
+          <td style="padding:4px 8px;">${escHtml(String(v))}</td>
+        </tr>`
+    )
+    .join("\n");
+
+  const noteSection = p.note
+    ? `<tr>
+        <td colspan="2" style="padding-top:12px;">
+          <strong>Reviewer Notes:</strong><br/>
+          <span style="white-space:pre-wrap;">${escHtml(p.note)}</span>
+        </td>
+      </tr>`
+    : "";
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"/><title>ATLAS Case Approved — ${escHtml(p.caseId)}</title></head>
+<body style="font-family:system-ui,Arial,sans-serif;background:#f4f4f4;margin:0;padding:24px;">
+  <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;margin:0 auto;border:1px solid #e0e0e0;">
+    <tr>
+      <td style="background:#16a34a;padding:20px 24px;">
+        <h1 style="margin:0;color:#ffffff;font-size:20px;">✅ ATLAS — Case Approved</h1>
+        <p style="margin:4px 0 0;color:#dcfce7;font-size:13px;">Action required: please implement the approved change below.</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#1a1a1a;">
+          <tr>
+            <td style="padding:4px 8px;font-weight:600;white-space:nowrap;">Case ID</td>
+            <td style="padding:4px 8px;font-family:monospace;">${escHtml(p.caseId)}</td>
+          </tr>
+          <tr style="background:#f9fafb;">
+            <td style="padding:4px 8px;font-weight:600;white-space:nowrap;">Approved By</td>
+            <td style="padding:4px 8px;">${escHtml(p.approver)}</td>
+          </tr>
+          <tr>
+            <td style="padding:4px 8px;font-weight:600;white-space:nowrap;">Decision Time</td>
+            <td style="padding:4px 8px;">${escHtml(p.decisionTime)}</td>
+          </tr>
+          <tr style="background:#f9fafb;">
+            <td style="padding:4px 8px;font-weight:600;white-space:nowrap;">Risk Label</td>
+            <td style="padding:4px 8px;">${escHtml(p.riskLabel)} (score: ${p.riskScore})</td>
+          </tr>
+          <tr>
+            <td style="padding:4px 8px;font-weight:600;white-space:nowrap;">Citizen</td>
+            <td style="padding:4px 8px;">${escHtml(p.userDisplay)}</td>
+          </tr>
+          <tr style="background:#f9fafb;">
+            <td style="padding:4px 8px;font-weight:600;white-space:nowrap;">Request</td>
+            <td style="padding:4px 8px;">${escHtml(p.userMessage)}</td>
+          </tr>
+
+          <tr>
+            <td colspan="2" style="padding:16px 8px 4px;font-weight:700;font-size:15px;border-top:1px solid #e5e7eb;">
+              🔧 Action to Implement: <span style="font-family:monospace;">${escHtml(p.toolName)}</span>
+            </td>
+          </tr>
+          ${toolArgsHtml}
+          ${noteSection}
+
+          <tr>
+            <td colspan="2" style="padding-top:16px;font-size:12px;color:#6b7280;border-top:1px solid #e5e7eb;">
+              <em>Risk Rationale:</em> ${escHtml(p.riskRationale)}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td style="background:#f9fafb;padding:12px 24px;font-size:11px;color:#9ca3af;text-align:center;border-top:1px solid #e5e7eb;">
+        This is an automated notification from the ATLAS HITL governance system.
+        Do not reply to this email.
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+function buildTextBody(p: ApprovalEmailPayload): string {
+  const args = Object.entries(p.toolArgs)
+    .filter(([k]) => k !== "conversation_id" && k !== "gateway_event_id")
+    .map(([k, v]) => `  ${k}: ${String(v)}`)
+    .join("\n");
+
+  return [
+    `ATLAS — Case Approved`,
+    `=====================`,
+    ``,
+    `Case ID:       ${p.caseId}`,
+    `Approved By:   ${p.approver}`,
+    `Decision Time: ${p.decisionTime}`,
+    `Risk Label:    ${p.riskLabel} (score: ${p.riskScore})`,
+    `Citizen:       ${p.userDisplay}`,
+    `Request:       ${p.userMessage}`,
+    ``,
+    `Action to Implement: ${p.toolName}`,
+    args,
+    p.note ? `\nReviewer Notes:\n${p.note}` : ``,
+    ``,
+    `Risk Rationale: ${p.riskRationale}`,
+    ``,
+    `---`,
+    `Automated notification from the ATLAS HITL governance system.`,
+  ]
+    .filter((l) => l !== undefined)
+    .join("\n");
+}
+
+function escHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function createTransport() {
+  const user = process.env.EMAIL_FROM;
+  const pass = process.env.EMAIL_APP_PASSWORD;
+  if (!user || !pass) return null;
+
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: { user, pass },
+  });
+}
+
+/**
+ * Sends an approval notification email to the implementation team.
+ * Non-blocking — logs a warning on failure but does not throw.
+ */
+export async function sendApprovalEmail(payload: ApprovalEmailPayload): Promise<void> {
+  const to = process.env.EMAIL_TO;
+  const from = process.env.EMAIL_FROM;
+
+  if (!to || !from || !process.env.EMAIL_APP_PASSWORD) {
+    console.warn(
+      "[emailService] Email not configured (EMAIL_FROM / EMAIL_APP_PASSWORD / EMAIL_TO missing). Skipping approval notification."
+    );
+    return;
+  }
+
+  const transport = createTransport();
+  if (!transport) return;
+
+  try {
+    await transport.sendMail({
+      from: `"ATLAS Governance" <${from}>`,
+      to,
+      subject: `[ATLAS] Case Approved — ${payload.caseId} — Action Required`,
+      text: buildTextBody(payload),
+      html: buildHtmlBody(payload),
+    });
+    console.info(`[emailService] Approval notification sent for ${payload.caseId} → ${to}`);
+  } catch (err) {
+    console.warn(`[emailService] Failed to send approval email for ${payload.caseId}:`, err);
+  }
+}
