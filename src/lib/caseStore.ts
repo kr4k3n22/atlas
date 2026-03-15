@@ -5,6 +5,8 @@ import { appendAuditEvent } from "@/lib/auditStore";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { executeAction } from "@/lib/actionExecutionStore";
 import { notifyGatewayDecision } from "@/lib/gatewayClient";
+import { sendEmail } from "@/lib/email";
+import { escalationEmail } from "@/lib/emailTemplates";
 import type { z } from "zod";
 
 type CaseRecord = z.infer<typeof CaseSchema> & {
@@ -106,6 +108,16 @@ export async function createCase(input: {
     case_id: id,
     detail: `Queued ${input.tool_name} for HITL approval. Risk: ${input.risk_label} (${input.risk_score}).`,
   });
+
+  // --- Send escalation email (fire-and-forget) ---
+  if (input.risk_label === "ESCALATE" || input.risk_label === "BLOCK") {
+    const approverEmail = process.env.APPROVER_NOTIFY_EMAIL;
+    const dashboardUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://cyber295atlas.app";
+    if (approverEmail) {
+      const { subject, html } = escalationEmail(stripInternal(normalizeRow(data)), "Approver", dashboardUrl);
+      sendEmail({ to: approverEmail, subject, html }).catch(() => {});
+    }
+  }
 
   return stripInternal(normalizeRow(data));
 }
