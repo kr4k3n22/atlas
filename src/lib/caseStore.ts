@@ -6,7 +6,8 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { executeAction } from "@/lib/actionExecutionStore";
 import { notifyGatewayDecision } from "@/lib/gatewayClient";
 import { sendEmail } from "@/lib/email";
-import { escalationEmail } from "@/lib/emailTemplates";
+import { escalationEmail, actionSummaryEmail } from "@/lib/emailTemplates";
+import { generateActionSummary } from "@/lib/generateActionSummary";
 import type { z } from "zod";
 
 type CaseRecord = z.infer<typeof CaseSchema> & {
@@ -109,14 +110,28 @@ export async function createCase(input: {
     detail: `Queued ${input.tool_name} for HITL approval. Risk: ${input.risk_label} (${input.risk_score}).`,
   });
 
-  // --- Send escalation email (fire-and-forget) ---
+  // --- Send escalation email + AI action summary (fire-and-forget) ---
   if (input.risk_label === "ESCALATE" || input.risk_label === "BLOCK") {
+    const caseRecord = stripInternal(normalizeRow(data));
     const approverEmail = process.env.APPROVER_NOTIFY_EMAIL;
     const dashboardUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://cyber295atlas.app";
+
+    // Notify the approver
     if (approverEmail) {
-      const { subject, html } = escalationEmail(stripInternal(normalizeRow(data)), "Approver", dashboardUrl);
+      const { subject, html } = escalationEmail(caseRecord, "Approver", dashboardUrl);
       sendEmail({ to: approverEmail, subject, html }).catch(() => {});
     }
+
+    // Send AI action summary to the case actions inbox
+    const CASE_ACTIONS_EMAIL = process.env.CASE_ACTIONS_EMAIL || "AtlasCaseActions@protonmail.com";
+    generateActionSummary(caseRecord)
+      .then((summary) => {
+        const { subject, html } = actionSummaryEmail(caseRecord, summary, dashboardUrl);
+        return sendEmail({ to: CASE_ACTIONS_EMAIL, subject, html });
+      })
+      .catch((err) => {
+        console.error("[caseStore] Failed to send AI action summary email:", err?.message ?? err);
+      });
   }
 
   return stripInternal(normalizeRow(data));
