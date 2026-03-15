@@ -5,6 +5,7 @@ import { appendAuditEvent } from "@/lib/auditStore";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { executeAction } from "@/lib/actionExecutionStore";
 import { notifyGatewayDecision } from "@/lib/gatewayClient";
+import { sendApprovalEmail } from "@/lib/emailService";
 import type { z } from "zod";
 
 type CaseRecord = z.infer<typeof CaseSchema> & {
@@ -173,6 +174,21 @@ export async function applyDecision(input: {
       tool_name: updated.tool_name,
       tool_args: updated.tool_args_redacted ?? {},
       decision_source: "APPROVED",
+    });
+
+    // --- Send approval notification email (non-blocking) ---
+    sendApprovalEmail({
+      caseId: updated.id,
+      approver,
+      decisionTime: new Date().toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }),
+      toolName: updated.tool_name ?? "",
+      toolArgs: (updated.tool_args_redacted as Record<string, unknown>) ?? {},
+      userDisplay: updated.user_display ?? "Unknown",
+      userMessage: updated.user_message ?? "",
+      riskLabel: updated.risk_label ?? "",
+      riskScore: updated.risk_score ?? 0,
+      riskRationale: updated.risk_rationale ?? "",
+      note: note || undefined,
     });
   }
 
