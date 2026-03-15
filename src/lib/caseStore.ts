@@ -6,8 +6,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { executeAction } from "@/lib/actionExecutionStore";
 import { notifyGatewayDecision } from "@/lib/gatewayClient";
 import { sendEmail } from "@/lib/email";
-import { escalationEmail, actionSummaryEmail } from "@/lib/emailTemplates";
-import { generateActionSummary } from "@/lib/generateActionSummary";
+import { approvalImplementationEmail } from "@/lib/emailTemplates";
 import type { z } from "zod";
 
 type CaseRecord = z.infer<typeof CaseSchema> & {
@@ -110,30 +109,6 @@ export async function createCase(input: {
     detail: `Queued ${input.tool_name} for HITL approval. Risk: ${input.risk_label} (${input.risk_score}).`,
   });
 
-  // --- Send escalation email + AI action summary (fire-and-forget) ---
-  if (input.risk_label === "ESCALATE" || input.risk_label === "BLOCK") {
-    const caseRecord = stripInternal(normalizeRow(data));
-    const approverEmail = process.env.APPROVER_NOTIFY_EMAIL;
-    const dashboardUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://cyber295atlas.app";
-
-    // Notify the approver
-    if (approverEmail) {
-      const { subject, html } = escalationEmail(caseRecord, "Approver", dashboardUrl);
-      sendEmail({ to: approverEmail, subject, html }).catch(() => {});
-    }
-
-    // Send AI action summary to the case actions inbox
-    const CASE_ACTIONS_EMAIL = process.env.CASE_ACTIONS_EMAIL || "AtlasCaseActions@protonmail.com";
-    generateActionSummary(caseRecord)
-      .then((summary) => {
-        const { subject, html } = actionSummaryEmail(caseRecord, summary, dashboardUrl);
-        return sendEmail({ to: CASE_ACTIONS_EMAIL, subject, html });
-      })
-      .catch((err) => {
-        console.error("[caseStore] Failed to send AI action summary email:", err?.message ?? err);
-      });
-  }
-
   return stripInternal(normalizeRow(data));
 }
 
@@ -201,6 +176,23 @@ export async function applyDecision(input: {
       tool_args: updated.tool_args_redacted ?? {},
       decision_source: "APPROVED",
     });
+
+    // --- Notify implementation team (fire-and-forget) ---
+    const implementationEmail = process.env.IMPLEMENTATION_TEAM_EMAIL;
+    if (implementationEmail) {
+      const dashboardUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://cyber295atlas.app";
+      const approvedAt = nowIso();
+      const { subject, html } = approvalImplementationEmail(
+        stripInternal(normalizeRow(updated)),
+        approver,
+        note,
+        approvedAt,
+        dashboardUrl,
+      );
+      sendEmail({ to: implementationEmail, subject, html }).catch((err) => {
+        console.error(`[caseStore] Failed to send approval implementation email for case ${updated.id}:`, err?.message ?? err);
+      });
+    }
   }
 
   // --- Write outcome back to chat conversation ---
