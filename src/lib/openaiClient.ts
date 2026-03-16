@@ -296,6 +296,72 @@ const ATLAS_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "update_employment_status",
+      description:
+        "Update the declared employment status for this claimant. " +
+        "Use whenever the claimant reports ANY change in their work situation — this includes explicit requests ('update my employment status to employed') " +
+        "AND natural statements of fact ('I found a job', 'I got a job', 'I started working', 'I am now employed', 'I lost my job', 'I am unemployed'). " +
+        "Extract the correct employment_status value from the message: 'employed' when they report finding/starting work, 'unemployed' when they report losing work or being without a job.",
+      parameters: {
+        type: "object",
+        properties: {
+          beneficiary_id: {
+            type: "string",
+            description: "The unique beneficiary identifier (e.g. BEN-ATLAS-001).",
+          },
+          employment_status: {
+            type: "string",
+            description: "The new employment status value declared by the claimant (e.g. 'employed', 'unemployed', 'self_employed', 'sick').",
+          },
+        },
+        required: ["beneficiary_id", "employment_status"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_document_status",
+      description:
+        "Update document or employer report status when the claimant reports on their documentation. " +
+        "Use for ANY natural statement about documents or employer reports — including: " +
+        "'I submitted the documents', 'I sent the paperwork', 'My employer hasn't sent the report yet', " +
+        "'I'm still waiting for my employer to provide proof', 'I don't have all the documents yet', " +
+        "'The employer report has been sent'. " +
+        "Extract employer_report_status: 'received' if employer has submitted/sent the report, " +
+        "'pending' if still waiting. " +
+        "Extract docs_quality: 'valid' if claimant says documents are submitted/complete, " +
+        "'missing' if documents are absent or not yet provided, " +
+        "'pending_verification' if partially submitted or waiting.",
+      parameters: {
+        type: "object",
+        properties: {
+          beneficiary_id: {
+            type: "string",
+            description: "The unique beneficiary identifier (e.g. BEN-ATLAS-001).",
+          },
+          employer_report_status: {
+            type: "string",
+            enum: ["received", "pending"],
+            description: "'received' if employer has sent the report, 'pending' if still waiting.",
+          },
+          docs_quality: {
+            type: "string",
+            enum: ["valid", "missing", "pending_verification"],
+            description: "'valid' if documents complete, 'missing' if absent, 'pending_verification' if partial.",
+          },
+          docs_received: {
+            type: "string",
+            description: "Comma-separated list of document names or types the claimant says they have submitted or received (e.g. 'termination notice, bank statements'). Only populate if the claimant explicitly names specific documents.",
+          },
+        },
+        required: ["beneficiary_id"],
+      },
+    },
+  },
 ];
 
 export type ChatWithToolsResult =

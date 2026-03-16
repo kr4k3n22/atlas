@@ -169,6 +169,18 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
   const harmSignalSource = normalizeSignalSource(input.harm_signal_source);
   const abilityToEngage = normalizeAbility(input.ability_to_engage);
   const appealRequested = normalize(input.appeal_or_review_requested) === "yes";
+  const notesText = `${freeText.claimant_message ?? ""} ${freeText.caseworker_note ?? ""}`.toLowerCase();
+  const textHarmSignal =
+    notesText.includes("rent") ||
+    notesText.includes("evict") ||
+    notesText.includes("housing") ||
+    notesText.includes("homeless") ||
+    notesText.includes("food") ||
+    notesText.includes("hungry") ||
+    notesText.includes("medical") ||
+    notesText.includes("medicine") ||
+    notesText.includes("unsafe") ||
+    notesText.includes("violence");
 
   const engagement = structured.engagement_barriers ?? {};
   const languageBarrier = normalize(engagement.language_barrier);
@@ -184,7 +196,7 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
     disabilityNeeds === "yes";
 
   const harmSignal =
-    harmSignalPresent !== "none" || barrierPresent || appealRequested;
+    harmSignalPresent !== "none" || barrierPresent || appealRequested || textHarmSignal;
 
   const evidenceIncomplete =
     ["partial", "pending", "failed"].includes(idvStatus) ||
@@ -316,11 +328,10 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
   const signal_level =
     harmSignalPresent !== "none"
       ? harmSignalPresent === "weak" ? "low" : harmSignalPresent
-      : barrierPresent || appealRequested
+      : barrierPresent || appealRequested || textHarmSignal
         ? "low"
         : "none";
 
-  const notesText = `${freeText.claimant_message ?? ""} ${freeText.caseworker_note ?? ""}`.toLowerCase();
   const signal_type: Array<
     "housing_risk" | "food_insecurity" | "medical_access" | "safety_risk" | "rights_process_concern" | "other"
   > = [];
@@ -357,7 +368,7 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
       notes:
         signal_level === "none"
           ? "No harm/rights signals detected."
-          : "Harm/rights signal detected or inferred from engagement barriers or appeal request.",
+          : "Harm/rights signal detected or inferred from claimant text, engagement barriers, or appeal request.",
     },
     labels: {
       label,
