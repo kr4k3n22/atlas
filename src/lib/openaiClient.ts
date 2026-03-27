@@ -381,7 +381,7 @@ export async function chatWithTools(
   forceToolName?: string,
 ): Promise<ChatWithToolsResult> {
   const client = getClient();
-  const model = process.env.OPENAI_MODEL ?? "gpt-4o";
+  const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
 
   // Inject beneficiary context so ChatGPT can populate tool arguments correctly.
   let systemPrompt = `${ATLAS_SYSTEM_PROMPT}\n\nThe current user's beneficiary ID is: ${beneficiaryId}. Use this ID when calling tools unless the user explicitly provides a different one.`;
