@@ -283,27 +283,26 @@ export async function POST(req: NextRequest) {
   // ── Step 2: Direct reply (no MCP tool needed) ────────────────────────────
   if (openaiDirectReply !== null) {
     if (hasPotentialHarmSignal(message)) {
-      const recompute = await recomputeDecisionState(beneficiaryId, {
-        claimantMessage: message,
-        transcriptExcerpt: buildTranscriptExcerpt([{ role: "user", content: message }]),
-      });
-      if (!recompute.ok) {
-        console.warn("[chat/route] recomputeDecisionState error (Step 2 direct reply):", recompute.error);
+      // Harm signals require governance — route through MCP instead of replying directly.
+      openaiDirectReply = null;
+      if (!toolCall) {
+        toolCall = { name: "check_payment_status", arguments: { beneficiary_id: beneficiaryId } };
       }
+      // Fall through to MCP steps below.
+    } else {
+      if (user && conversationId) {
+        await supabaseAdmin.from("chat_messages").insert({
+          conversation_id: conversationId,
+          role: "assistant",
+          content: openaiDirectReply,
+        });
+        await supabaseAdmin
+          .from("conversations")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", conversationId);
+      }
+      return NextResponse.json({ reply: openaiDirectReply, conversation_id: conversationId });
     }
-
-    if (user && conversationId) {
-      await supabaseAdmin.from("chat_messages").insert({
-        conversation_id: conversationId,
-        role: "assistant",
-        content: openaiDirectReply,
-      });
-      await supabaseAdmin
-        .from("conversations")
-        .update({ updated_at: new Date().toISOString() })
-        .eq("id", conversationId);
-    }
-    return NextResponse.json({ reply: openaiDirectReply, conversation_id: conversationId });
   }
 
   // ── Step 2.5: Local write — update_employment_status ───────────────────────────
@@ -496,7 +495,7 @@ export async function POST(req: NextRequest) {
 
     const statusProfile = await getClaimantProfile(beneficiaryId).catch(() => null);
     const storedDecision = statusProfile?.currentApplicationStatus ?? "continue_review";
-    if (storedDecision === "approve") {
+    if (storedDecision === "approve" && !hasPotentialHarmSignal(message)) {
       const empStatus = statusProfile?.employmentStatus
         ? ` Your employment status on record is **${statusProfile.employmentStatus}**.`
         : "";
