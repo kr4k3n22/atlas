@@ -18,15 +18,6 @@ export type StoredUser = {
 const DATA_DIR = path.join(process.cwd(), ".data");
 const USERS_PATH = path.join(DATA_DIR, "users.json");
 
-// Serializes all mutating operations to prevent read-modify-write races.
-let writeLock: Promise<unknown> = Promise.resolve();
-
-function withLock<T>(fn: () => Promise<T>): Promise<T> {
-  const next = writeLock.then(fn);
-  writeLock = next.catch(() => {});
-  return next;
-}
-
 async function readUsers(): Promise<StoredUser[]> {
   try {
     const raw = await fs.readFile(USERS_PATH, "utf-8");
@@ -63,30 +54,28 @@ export async function createUser(input: {
   password: string;
   role: Role;
 }): Promise<StoredUser> {
-  // Hash outside the lock — bcrypt is slow and doesn't touch the file.
+  const users = await readUsers();
+
   const emailNorm = input.email.toLowerCase().trim();
+  if (users.some((x) => x.email.toLowerCase() === emailNorm)) {
+    throw new Error("Email already exists");
+  }
+
+  // bcrypt cost 12 is a reasonable baseline for dev/small deployments.
   const passwordHash = await bcrypt.hash(input.password, 12);
 
-  return withLock(async () => {
-    const users = await readUsers();
+  const u: StoredUser = {
+    id: nanoid(),
+    email: emailNorm,
+    displayName: input.displayName.trim(),
+    role: input.role,
+    passwordHash,
+    createdAt: new Date().toISOString(),
+  };
 
-    if (users.some((x) => x.email.toLowerCase() === emailNorm)) {
-      throw new Error("Email already exists");
-    }
-
-    const u: StoredUser = {
-      id: nanoid(),
-      email: emailNorm,
-      displayName: input.displayName.trim(),
-      role: input.role,
-      passwordHash,
-      createdAt: new Date().toISOString(),
-    };
-
-    users.push(u);
-    await writeUsers(users);
-    return u;
-  });
+  users.push(u);
+  await writeUsers(users);
+  return u;
 }
 
 export async function verifyPassword(user: StoredUser, password: string): Promise<boolean> {
@@ -94,11 +83,9 @@ export async function verifyPassword(user: StoredUser, password: string): Promis
 }
 
 export async function touchLastLogin(userId: string) {
-  return withLock(async () => {
-    const users = await readUsers();
-    const idx = users.findIndex((x) => x.id === userId);
-    if (idx === -1) return;
-    users[idx].lastLoginAt = new Date().toISOString();
-    await writeUsers(users);
-  });
+  const users = await readUsers();
+  const idx = users.findIndex((x) => x.id === userId);
+  if (idx === -1) return;
+  users[idx].lastLoginAt = new Date().toISOString();
+  await writeUsers(users);
 }

@@ -155,7 +155,6 @@ export async function applyDecision(input: {
     .from("approval_queue")
     .update({ status, history })
     .eq("id", input.id)
-    .in("status", ["PENDING_REVIEW", "NEEDS_MORE_INFO"])
     .select("*")
     .single();
 
@@ -258,7 +257,7 @@ export async function applyDecision(input: {
     }
   }
 
-  // --- Notify Gateway ---
+  // --- Notify Gateway (non-blocking) ---
   // This fires the Inngest event `atlas/sarah.decision` in the Gateway
   // to resume the paused governance workflow.
   const gatewayDecision =
@@ -268,22 +267,19 @@ export async function applyDecision(input: {
         ? "REJECTED"
         : "NEEDS_INFO";
 
-  try {
-    const gwResult = await notifyGatewayDecision({
-      case_id: updated.id,
-      decision: gatewayDecision,
-      note,
-      approver,
-      event_id: typeof gatewayEventId === "string" ? gatewayEventId : undefined,
-    });
-    if (!gwResult.ok) {
+  notifyGatewayDecision({
+    case_id: updated.id,
+    decision: gatewayDecision,
+    note,
+    approver,
+    event_id: typeof gatewayEventId === "string" ? gatewayEventId : undefined,
+  }).then((result) => {
+    if (!result.ok) {
       console.warn(
-        `[caseStore] Gateway notification failed for ${updated.id}: ${gwResult.error}`
+        `[caseStore] Gateway notification failed for ${updated.id}: ${result.error}`
       );
     }
-  } catch (err) {
-    console.warn(`[caseStore] Gateway notification threw for ${updated.id}:`, err);
-  }
+  });
 
   return stripInternal(normalizeRow(updated));
 }
